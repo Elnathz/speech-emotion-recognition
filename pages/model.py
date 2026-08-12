@@ -11,6 +11,7 @@ from sklearn.metrics import classification_report
 from config import MODEL_DISPLAY_PATH, SER_BACKBONE
 from services import load_model_metrics, load_ser_model, load_test_evaluation, load_training_history
 from utils import ID2LABEL
+from components.ui import render_section_header
 
 LABELS_ORDER = [ID2LABEL[i] for i in sorted(ID2LABEL)]
 
@@ -20,15 +21,7 @@ def _id_number(n: int) -> str:
 
 
 def _render_architecture() -> None:
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Arsitektur</div>
-            <div class="section-title">Alur Model</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Arsitektur", "Alur Model")
     st.code(
         "WavLM Base Plus (microsoft/wavlm-base-plus, hidden=768)\n"
         "        │\n"
@@ -45,15 +38,7 @@ def _render_architecture() -> None:
 
 
 def _render_training_curves(history: dict) -> None:
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Training</div>
-            <div class="section-title">Kurva Akurasi & Loss per Epoch</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Training", "Kurva Akurasi & Loss per Epoch")
 
     epochs = list(range(1, len(history.get("la", [])) + 1))
     colors = ["#fafafa", "#737373"]
@@ -106,15 +91,7 @@ def _render_training_curves(history: dict) -> None:
 
 
 def _render_confusion_matrix(eval_df: pd.DataFrame) -> None:
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Evaluasi Test</div>
-            <div class="section-title">Confusion Matrix</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Evaluasi Test", "Confusion Matrix")
 
     cm = pd.crosstab(eval_df["emosi_true"], eval_df["emosi_pred"]).reindex(
         index=LABELS_ORDER, columns=LABELS_ORDER, fill_value=0

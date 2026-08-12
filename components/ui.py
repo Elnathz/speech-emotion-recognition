@@ -1,5 +1,6 @@
 """Komponen UI murni untuk merender elemen antarmuka."""
 
+import html
 import json
 from pathlib import Path
 
@@ -18,40 +19,24 @@ def format_file_size(size_bytes: int | None) -> str:
     return f"{size_bytes / (1024 * 1024):.2f} MB"
 
 
-def summarize_prediction(result: dict) -> dict:
-    """Ringkas prediksi untuk tampilan ranking & margin (UI only)."""
-    prob_df = result["probabilities_df"]
-    top_pct = float(prob_df.iloc[0]["Persentase (%)"])
-
-    second_label = None
-    second_pct = 0.0
-    if len(prob_df) > 1:
-        second_label = str(prob_df.iloc[1]["Emosi"])
-        second_pct = float(prob_df.iloc[1]["Persentase (%)"])
-
-    margin_pp = top_pct - second_pct
-
-    if margin_pp >= 20:
-        separation = "Pemisahan kuat dari emosi lain"
-    elif margin_pp >= 10:
-        separation = "Pemisahan cukup jelas dari emosi lain"
-    else:
-        separation = "Pemisahan tipis — emosi lain masih dekat"
-
-    return {
-        "top_label": result["predicted_label"],
-        "top_pct": top_pct,
-        "second_label": second_label,
-        "second_pct": second_pct,
-        "margin_pp": margin_pp,
-        "separation": separation,
-        "num_classes": len(prob_df),
-    }
+def render_section_header(step: str, title: str = "", desc: str | None = None) -> None:
+    title_html = f'<div class="section-title">{html.escape(title)}</div>' if title else ""
+    desc_html = f'<p class="section-desc">{html.escape(desc)}</p>' if desc else ""
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="section-step">{html.escape(step)}</div>
+            {title_html}
+            {desc_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_transcript_card(text: str) -> None:
     if text:
-        body = f'<div class="transcript-text">"{text}"</div>'
+        body = f'<div class="transcript-text">"{html.escape(text)}"</div>'
     else:
         body = (
             '<div class="transcript-empty">Tidak ada ucapan yang terdeteksi '
@@ -75,20 +60,14 @@ def _format_timestamp(seconds: float) -> str:
 
 def render_segment_timeline(segments: list[dict]) -> None:
     """Timeline emosi per-segmen transkrip (opt-in, hasil dari run_segment_predictions)."""
-    st.markdown(
-        '<div class="section-card">'
-        '<div class="section-step">Per-Segmen</div>'
-        '<div class="section-title">Emosi Sepanjang Transkrip</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    render_section_header("Per-Segmen", "Emosi Sepanjang Transkrip")
     for seg in segments:
         label = seg["result"]["predicted_label"]
         confidence = seg["result"]["confidence"] * 100
         icon = EMOTION_ICONS.get(label, "🎭")
         accent = EMOTION_COLORS.get(label, "#a3a3a3")
         time_range = f"{_format_timestamp(seg['start'])}–{_format_timestamp(seg['end'])}"
-        text = seg["text"] or "(tanpa teks)"
+        text = html.escape(seg["text"] or "(tanpa teks)")
         st.markdown(
             f"""
             <div class="segment-card" style="--emotion-color:{accent};">
@@ -140,34 +119,50 @@ def render_metadata_card(
     channels: int,
     file_size: str,
 ) -> None:
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Metadata Audio</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="meta-label">Nama File</div><div class="meta-value">{filename}</div>', unsafe_allow_html=True)
-    with c2:
+    """Kartu metadata audio, ditata 2x2 karena dipanggil dari kolom sidebar yang sempit."""
+    render_section_header("Metadata Audio")
+    st.markdown(f'<div class="meta-label">Nama File</div><div class="meta-value">{filename}</div>', unsafe_allow_html=True)
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
         st.markdown(f'<div class="meta-label">Durasi</div><div class="meta-value">{duration_sec} dtk</div>', unsafe_allow_html=True)
-    with c3:
+    with r1c2:
         st.markdown(f'<div class="meta-label">Sample Rate</div><div class="meta-value">{sample_rate} Hz</div>', unsafe_allow_html=True)
-    with c4:
+    r2c1, r2c2 = st.columns(2)
+    with r2c1:
         st.markdown(f'<div class="meta-label">Channel</div><div class="meta-value">{channels}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="meta-label">Ukuran File</div><div class="meta-value">{file_size}</div>',
-        unsafe_allow_html=True,
-    )
+    with r2c2:
+        st.markdown(f'<div class="meta-label">Ukuran File</div><div class="meta-value">{file_size}</div>', unsafe_allow_html=True)
 
 
 def render_waveform_chart(envelope_df: pd.DataFrame) -> None:
     if envelope_df.empty:
         return
     st.markdown('<div class="meta-label" style="margin-top:0.75rem;">Bentuk Gelombang</div>', unsafe_allow_html=True)
-    st.line_chart(envelope_df, height=140, color=["#fafafa", "#737373"])
+    # ponytail: st.line_chart dengan height kecil (dicoba 100/140) membuat area plot
+    # kolaps ke 0px (chrome legenda+axis menghabiskan seluruh tinggi) -- terverifikasi
+    # lewat Playwright, bukan cuma di sidebar. 220 adalah titik aman terkecil yang
+    # masih menyisakan area plot terlihat; naikkan lagi kalau butuh chart lebih pendek.
+    st.line_chart(envelope_df, height=220, color=["#fafafa", "#737373"])
+
+
+def render_history_list(history: list[dict]) -> None:
+    """Daftar riwayat prediksi sesi berjalan (opt-in, hanya dirender kalau history tidak kosong)."""
+    if not history:
+        return
+    items = "".join(
+        f'<div class="sidebar-history-item">'
+        f'<span class="sidebar-history-emoji">{EMOTION_ICONS.get(entry["label"], "🎭")}</span>'
+        f'<div class="sidebar-history-body">'
+        f'<div class="sidebar-history-label">{html.escape(entry["label"])} · {entry["confidence"] * 100:.0f}%</div>'
+        f'<div class="sidebar-history-meta">{html.escape(entry["time"])} · {html.escape(entry["filename"])}</div>'
+        f"</div></div>"
+        for entry in history
+    )
+    st.markdown(
+        f'<div class="sidebar-section-label">Riwayat Sesi</div>'
+        f'<div class="sidebar-history-list">{items}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_top3_cards(prob_df: pd.DataFrame) -> None:

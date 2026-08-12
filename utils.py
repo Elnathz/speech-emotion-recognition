@@ -393,3 +393,34 @@ def predict_emotion(
         "logits": logits.squeeze(0).cpu().numpy(),
         "probabilities_df": prob_df,
     }
+
+
+def summarize_prediction(result: dict) -> dict:
+    """Ringkas prediksi untuk tampilan ranking & margin."""
+    prob_df = result["probabilities_df"]
+    top_pct = float(prob_df.iloc[0]["Persentase (%)"])
+
+    second_label = None
+    second_pct = 0.0
+    if len(prob_df) > 1:
+        second_label = str(prob_df.iloc[1]["Emosi"])
+        second_pct = float(prob_df.iloc[1]["Persentase (%)"])
+
+    margin_pp = top_pct - second_pct
+
+    if margin_pp >= 20:
+        separation = "Pemisahan kuat dari emosi lain"
+    elif margin_pp >= 10:
+        separation = "Pemisahan cukup jelas dari emosi lain"
+    else:
+        separation = "Pemisahan tipis — emosi lain masih dekat"
+
+    return {
+        "top_label": result["predicted_label"],
+        "top_pct": top_pct,
+        "second_label": second_label,
+        "second_pct": second_pct,
+        "margin_pp": margin_pp,
+        "separation": separation,
+        "num_classes": len(prob_df),
+    }

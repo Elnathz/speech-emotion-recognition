@@ -1,5 +1,112 @@
 # Walkthrough
 
+## [2026-08-13] Fix Waveform Chart Tidak Muncul + Verifikasi Visual dengan Playwright
+
+### Konteks
+User melaporkan grafik "Bentuk Gelombang" di sidebar Analisis tidak muncul, dan mengizinkan menambahkan browser headless ke environment kerja kalau memang dibutuhkan untuk verifikasi visual (redesign IA sebelumnya sempat menandai ini sebagai item yang tidak bisa diverifikasi karena tidak ada browser).
+
+### Root Cause
+Bukan bug logic Python maupun CSS proyek ini. Ditemukan lewat investigasi bertahap dengan Playwright (screenshot + inspeksi SVG langsung, dibandingkan di app bare tanpa CSS proyek sama sekali untuk isolasi):
+- `utils.get_waveform_envelope()` sehat (data non-empty, rentang nilai wajar) — bukan di situ masalahnya.
+- `st.line_chart(envelope_df, height=100, color=[...])` di `components/ui.py::render_waveform_chart` adalah akar masalahnya: pada Streamlit 1.61.1, memberi parameter `height` eksplisit yang kecil membuat area plot vertikal kolaps karena "chrome" (axis + legend) menghabiskan hampir seluruh tinggi yang dialokasikan. Dibuktikan dengan mengukur langsung koordinat Y pada SVG yang dirender: `height=100` -> rentang Y garis = 0px (benar-benar rata/tidak kelihatan), `height=140` (nilai SEBELUM redesign sesi ini) -> cuma ~11px dari 140px (nyaris tidak kelihatan juga), `height=220` -> ~36px rentang Y (jelas kelihatan), default (tanpa `height`) -> ~76px dari 350px.
+- Bug ini sudah ada SEBELUM sesi redesign kemarin (height lama 140 sudah di ambang batas nyaris-tidak-kelihatan) — perubahan sesi kemarin (140 -> 100) mengubahnya dari "nyaris tidak kelihatan" jadi "benar-benar hilang".
+
+### Perbaikan
+- `components/ui.py::render_waveform_chart`: `height` dinaikkan dari `100` ke `220`, dengan komentar `ponytail:` menjelaskan kenapa nilai kecil tidak aman dan titik amannya di mana.
+
+### Tooling Ditambahkan
+- Playwright (`pip install playwright` + `playwright install chromium`) dipasang di `.venv` lokal, **bukan** di `requirements.txt` — murni alat verifikasi visual untuk sesi kerja, bukan dependency runtime aplikasi (lihat AGENTS.md 4.1, Inference Only Scope).
+- Chromium butuh library sistem (`libnspr4.so` dkk.) yang tidak ada di Arch Linux secara default. `playwright install-deps` bawaan cuma support Debian/Ubuntu/Fedora (pakai `apt-get`, tidak ada di Arch). User menginstal manual lewat `pacman -S nss nspr at-spi2-core libcups libdrm mesa libxkbcommon libxcomposite libxdamage libxfixes libxrandr gtk3 pango cairo alsa-lib` di terminal asli mereka (sesi ini tidak punya TTY interaktif untuk prompt password `sudo`).
+
+### Verifikasi
+- Alur penuh diuji lewat Playwright: upload file audio sungguhan (file WAV sintetis dengan amplitude bervariasi, bukan nada murni konstan yang ternyata kasus degenerate) ke `st.file_uploader` di sidebar (Playwright bisa simulasikan upload file browser sungguhan, beda dengan `AppTest` yang tidak bisa), klik "Analisis Emosi", tunggu hasil.
+- Konfirmasi visual: waveform (garis Puncak putih + Lembah abu-abu) tampil jelas di sidebar setelah perbaikan; screenshot sebelum vs sesudah dibandingkan langsung.
+- Konfirmasi hasil analisis lengkap tampil di konten utama: result card, transkrip, Top 3 Emosi, confidence bars, tombol export, expander Detail Teknis — menutup item verifikasi "alur upload sampai hasil belum diverifikasi end-to-end" dari redesign sebelumnya.
+- Sekalian ditutup: navbar top (grup Beranda/Analisis/Insight, termasuk dropdown "Analisis" yang perlu diklik dulu untuk membuka) dan layout halaman Home terkonfirmasi tampil benar lewat screenshot — item yang sebelumnya juga ditandai belum diverifikasi.
+- Sempat salah duga ada bug kedua ("hasil analisis tidak muncul, tetap menampilkan empty-state walau audio sudah di-upload") — ternyata false alarm dari metodologi tes sendiri: `render_empty_state()` dipanggil dari 2 tempat berbeda dengan pesan yang SAMA (belum ada audio sama sekali, vs audio ada tapi belum di-klik Analisis), dan skenario tes awal memang belum pernah klik tombol "Analisis Emosi". Dikonfirmasi lewat debug print sementara di server (dihapus lagi setelah terbukti) yang menunjukkan `audio_file` sudah terisi benar di run yang bersangkutan. Dicatat sebagai potensi perbaikan copy kecil di masa depan (bedakan pesan "belum ada audio" vs "audio siap, klik Analisis Emosi"), bukan bug.
+- `python -m py_compile` dan `streamlit.testing.v1.AppTest` (kelima halaman) dijalankan ulang setelah semua perubahan -> bersih, tanpa exception.
+
+### Yang Tidak Diubah
+- Tidak ada perubahan pada logic inferensi/model.
+- `requirements.txt` tidak disentuh (Playwright sengaja tidak jadi dependency project).
+
+### Follow-up yang Disarankan
+- Pertimbangkan pesan empty-state yang berbeda untuk "belum ada audio" vs "audio sudah dipilih, klik Analisis Emosi di sidebar" supaya tidak membingungkan (ditemukan saat verifikasi sesi ini, bukan diminta user).
+- Kalau ke depan mau QA visual jadi bagian rutin (bukan cuma ad-hoc), pertimbangkan skrip Playwright permanen di repo (di luar scope sesi ini per instruksi user).
+
+## [2026-08-13] Redesign IA: Navbar, Sidebar Analisa Suara, dan Halaman Home
+
+### Konteks
+Lanjutan redesign UI. Permintaan user kali ini soal struktur navigasi, bukan visual/CSS: (1) menu sidebar diubah jadi navbar atas, (2) sidebar dipakai ulang sebagai panel kontrol analisa suara, (3) sidebar itu cuma muncul di halaman Analisis, (4) hasil analisis ditampilkan detail di halaman Analisis, (5) info statis (judul project, peta emosi, stat model) pindah ke halaman Home baru, (6) Home jadi landing page default. Dikonfirmasi ke user: seluruh alur input audio (bukan cuma kontrol inti) pindah ke sidebar, dan Riwayat Sesi tetap di sidebar analisis (bukan ke Home).
+
+### Keputusan Desain
+- `st.navigation(pages, position="top")` (Streamlit 1.61.1 mendukung ini) menggantikan menu sidebar bawaan. `st.sidebar` tetap container biasa terlepas dari `position`, dan hanya render kalau ada yang ditulis ke situ pada page run tersebut — jadi syarat "sidebar cuma muncul di Analisis" otomatis terpenuhi dengan hanya memanggil `st.sidebar` di `pages/analisis.py`, tanpa perlu trik tambahan.
+- "Detail Teknis" (backbone/mode/checkpoint) dari sidebar lama didrop total, tidak dipindah ke Home — sudah jadi subset penuh dari expander "Konfigurasi Training" yang sudah ada di `pages/model.py`. Home cukup kasih `st.page_link` ke halaman Model.
+- `render_hero()` dihapus dari halaman Analisis (dipakai di Home sebagai pemilik narasi intro), diganti heading ringan lewat `render_section_header()` yang sudah ada.
+- Class CSS `sidebar-*` dipakai ulang apa adanya di halaman Home (tidak di-rename) — class tersebut cuma string CSS tanpa keterikatan ke container `st.sidebar` sungguhan, jadi aman dipakai di konten utama. Dibungkus `st.columns([1,2,1])` supaya tidak melebar penuh di layout wide.
+- `render_metadata_card` diubah dari 4 kolom sejajar jadi 2x2, karena sekarang cuma dipanggil dari kolom sidebar sempit (~336px) — 4 kolom akan bikin nilai seperti "16000 Hz" wrap parah.
+- Validasi desain (posisi navbar top, penempatan Detail Teknis, gotcha Streamlit) dilakukan lewat sub-agent Plan sebelum implementasi, bukan asumsi langsung.
+
+### File yang Diubah
+- `app.py`: tambah `st.Page("pages/home.py", ..., default=True)`, hapus `default=True` dari Analisis, `st.navigation(..., position="top")`, hapus import dan panggilan `render_sidebar` (sudah tidak ada).
+- `pages/home.py` (baru): landing page — hero, stat grid, status model, peta emosi (port dari `sidebar.py` lama), CTA `st.page_link` ke Analisis dan Model.
+- `components/sidebar.py`: dihapus. Konfirmasi lewat grep hanya diimpor dari `app.py`, tidak ada pemakai lain.
+- `components/ui.py`: tambah `render_history_list(history)` (ekstraksi dari `sidebar.py` lama, murni render tanpa baca `st.session_state`), `render_metadata_card` jadi 2x2, `render_waveform_chart` height 140 -> 100.
+- `pages/analisis.py`: restrukturisasi `main()` — alur input audio (pilih sumber, upload/rekam, metadata, preview, waveform, checkbox per-segmen, tombol Analisis Emosi/Analisis Ulang, riwayat sesi) dibungkus `with st.sidebar:`; blok jalankan prediksi dan seluruh hasil (result card, transkrip, segmen, top-3, confidence, export, detail teknis) tetap di konten utama. Kasus `audio_file is None` atau metadata gagal diproses: `render_empty_state()` dipindah ke KONTEN UTAMA (bukan sidebar), sesuai requirement.
+
+### Yang Tidak Diubah
+- Logic inferensi, preprocessing audio, arsitektur model (`utils.py::predict_emotion`, `model.py`, `services.py` tidak disentuh selain yang sudah ada).
+- `pages/dashboard.py`, `pages/model.py`, `pages/dataset.py` — tidak ada perubahan kode, hanya terdampak otomatis oleh `position="top"` di level navigasi.
+- Skema warna monokrom dan token CSS dari redesign sebelumnya.
+
+### Verifikasi
+- `python -m py_compile` untuk seluruh file yang diubah/dibuat plus `utils.py`, `services.py`, `config.py`, `model.py` -> tanpa error sintaks.
+- `streamlit.testing.v1.AppTest` lewat `app.py` (mensimulasikan `st.navigation` asli) untuk kelima halaman (Home, Analisis, Dashboard, Model, Dataset) -> tanpa exception. Dicek juga jumlah elemen di `at.sidebar`: 0 di Home/Dashboard/Model/Dataset, terisi (radio + section header) di Analisis — mengonfirmasi sidebar memang cuma render saat halaman Analisis dibuka.
+- Server Streamlit sungguhan dijalankan lokal (`.venv/bin/streamlit run app.py`), endpoint `/_stcore/health` mengembalikan `ok`, root page mengembalikan HTTP 200 — start-up bersih tanpa error dengan struktur navigasi baru.
+- grep memastikan tidak ada referensi tersisa ke `components.sidebar`/`render_sidebar` yang sudah dihapus, dan `render_hero` cuma dipakai di `pages/home.py`.
+
+### Yang Belum Diverifikasi
+- Tampilan visual navbar grup ("Beranda"/"Analisis"/"Insight") dalam mode `position="top"` di browser sungguhan — environment kerja ini tidak punya headless browser/Playwright. `AppTest` mengonfirmasi tidak ada exception saat build navigasi, tapi tidak memvalidasi rendering visual dropdown grup.
+- Alur upload file audio sungguhan lewat `st.file_uploader`/`st.audio_input` di dalam sidebar sempit sampai ke hasil prediksi penuh — `AppTest` tidak mendukung simulasi interaksi `file_uploader` dengan bytes nyata, jadi jalur ini hanya diverifikasi lewat pembacaan kode (logic dipindah tanpa diubah dari versi yang sudah terbukti jalan sebelumnya), bukan dijalankan end-to-end otomatis.
+- Proporsi visual grid Peta Emosi/stat card saat dipindah dari kolom sidebar sempit ke halaman Home yang lebar (dibungkus `st.columns([1,2,1])`, tapi belum dicek visual).
+
+### Follow-up yang Disarankan
+- Uji manual di browser: cek navbar top, sidebar hanya muncul di Analisis, upload/rekam audio sampai hasil, dan tata letak Home di layar desktop maupun mobile (proyek ini mensyaratkan mobile-first per AGENTS.md 3.2, dan struktur navigasi top-nav + sidebar kontekstual ini belum pernah diuji di breakpoint kecil).
+
+## [2026-08-13] Redesign UI Streamlit: Konsolidasi Token CSS & Komponen Section Header
+
+### Konteks
+Permintaan redesign tampilan Streamlit. Setelah eksplorasi kode, arsitektur komponen (`components/ui.py`, `css.py`, `sidebar.py`, `pages/*.py`) sudah cukup baik, tapi implementasi CSS-nya berantakan: warna/radius ditulis sebagai literal `rgba(...)` berulang di ~480 baris `components/css.py`, dan markup section header (step label + judul) diduplikasi manual di 4 halaman berbeda. Pengguna memutuskan lingkup redesign: fokus visual look & feel, tetap monokrom (dipoles bukan diganti skema warna), mencakup semua halaman.
+
+### Keputusan Desain
+- Tidak mengganti palet warna monokrom yang sudah ada, hanya menjadikannya konsisten lewat CSS custom properties (`:root`) di `components/css.py`, bukan membangun sistem token Python baru karena `EMOTION_COLORS`/`EMOTION_ICONS` di `config.py` memang harus tetap di Python (dipakai untuk inline style).
+- Skala radius disederhanakan jadi 3 tingkat (`--radius-sm/md/lg`) menggantikan campuran 10-20px yang sebelumnya dipilih tidak konsisten antar komponen.
+- Transisi hover ditambahkan pada card yang berperilaku seperti daftar (`section-card`, `top3-card`, `segment-card`, item sidebar), bukan pada `hero-card`/`result-card` yang statis.
+- Inkonsistensi confusion matrix (PNG statis di `dashboard.py` vs Altair recompute di `model.py`) sengaja tidak disentuh karena itu masalah data/logic, bukan visual.
+- Tidak membangun theming light/dark karena pengguna memilih tetap monokrom.
+
+### File yang Diubah
+- `components/css.py`: tambah blok `:root` token (surface, border, teks, radius, transisi), ganti literal berulang dengan `var(--token)`, tambah hover state.
+- `components/ui.py`: tambah `render_section_header(step, title="", desc=None)`, escape teks dinamis (`transcript`, `segment text`) dengan `html.escape()` di `render_transcript_card()` dan `render_segment_timeline()`, pindahkan `summarize_prediction()` keluar (murni logic, bukan render).
+- `utils.py`: terima `summarize_prediction()` dari `components/ui.py`.
+- `pages/analisis.py`, `pages/dashboard.py`, `pages/model.py`: ganti markup `section-card` manual (masing-masing 2-3 lokasi) dengan pemanggilan `render_section_header()`.
+- `pages/dataset.py`: hapus helper lokal `_section()`, pakai `render_section_header()` yang dibagi bersama.
+
+### Yang Tidak Diubah
+- Skema warna monokrom, `EMOTION_COLORS`/`EMOTION_ICONS` di `config.py`.
+- Layout kolom (`st.columns`) di setiap halaman, jadi responsivitas mobile-first yang sudah ada tidak berubah; hover state hanya berlaku desktop dan tidak memengaruhi perangkat sentuh.
+- Confusion matrix ganda (PNG di dashboard vs Altair di halaman model), logic inferensi, arsitektur model, pipeline audio.
+
+### Verifikasi
+- `python -m py_compile` untuk seluruh file yang diubah plus `app.py`, `config.py`, `model.py`, `services.py` -> tanpa error sintaks.
+- `streamlit.testing.v1.AppTest` dijalankan lewat entry point `app.py` (mensimulasikan `st.navigation` asli, bukan impor file halaman langsung) untuk keempat halaman (Analisis, Dashboard, Model, Dataset) -> tanpa exception, markup `render_section_header()` ter-render dengan benar termasuk escaping karakter HTML.
+- Server Streamlit dijalankan lokal (`.venv/bin/streamlit run app.py`) untuk memastikan proses start tanpa error sebelum verifikasi lewat AppTest.
+- Ditemukan (tapi tidak diperbaiki, di luar lingkup redesign visual): `AppTest.from_file("pages/dashboard.py")` yang dipanggil langsung (tanpa lewat `app.py`) gagal dengan `ImportError` karena tabrakan nama modul antara `model.py` di root dan `pages/model.py`. Dikonfirmasi lewat `git stash` bahwa masalah ini sudah ada sebelum redesign ini dan tidak muncul saat navigasi lewat `app.py` yang sebenarnya.
+
+### Follow-up yang Disarankan (Belum Dikerjakan)
+- Uji visual manual di browser (screenshot sebelum/sesudah tiap halaman) karena environment kerja ini tidak punya headless browser/Playwright untuk verifikasi otomatis.
+- Pertimbangkan menyatukan tabrakan nama `model.py`/`pages/model.py` yang ditemukan di atas, di luar lingkup task ini.
+
 ## [2026-08-12] Fitur Rekam Mikrofon Langsung (Live Record)
 
 ### Konteks
