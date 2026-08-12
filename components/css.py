@@ -216,6 +216,34 @@ def inject_custom_css() -> None:
             color: rgba(163,163,163,0.85);
             font-style: italic;
         }
+        .segment-card {
+            background: rgba(23,23,23,0.55);
+            border: 1px solid rgba(163,163,163,0.14);
+            border-left: 3px solid var(--emotion-color, #a3a3a3);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.6rem;
+        }
+        .segment-time {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #a3a3a3;
+            margin-bottom: 0.3rem;
+        }
+        .segment-text {
+            font-size: 0.95rem;
+            color: #f5f5f5;
+            font-style: italic;
+            margin-bottom: 0.45rem;
+        }
+        .segment-emotion-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            font-weight: 650;
+        }
         .prob-row-label {
             display: flex;
             justify-content: space-between;

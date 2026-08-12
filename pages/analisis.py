@@ -23,9 +23,18 @@ from config import (
 from services import (
     check_model_ready,
     run_prediction,
+    run_segment_predictions,
     load_whisper_lazy,
 )
-from utils import ID2LABEL, LABEL2ID, get_audio_info, get_waveform_envelope, safe_transcribe
+from utils import (
+    ID2LABEL,
+    LABEL2ID,
+    get_audio_info,
+    get_transcription_waveform,
+    get_waveform_envelope,
+    safe_transcribe,
+    safe_transcribe_segments,
+)
 
 from components.ui import (
     render_hero,
@@ -35,6 +44,7 @@ from components.ui import (
     render_probability_bars,
     render_result_card,
     render_transcript_card,
+    render_segment_timeline,
     render_waveform_chart,
     render_export_buttons,
     format_file_size,
@@ -170,6 +180,16 @@ def main() -> None:
                 "**Refresh halaman (F5)** lalu upload file baru untuk analisis berikutnya."
             )
 
+    want_segments = False
+    if ENABLE_STT:
+        want_segments = st.checkbox(
+            "Analisis emosi per-segmen (berdasarkan transkrip)",
+            help=(
+                "Membagi audio jadi beberapa segmen berdasarkan timestamp transkrip Whisper, "
+                "lalu menjalankan model emosi per segmen (bukan cuma satu label untuk seluruh audio)."
+            ),
+        )
+
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     cloud_limit_reached = IS_CLOUD and st.session_state.get("cloud_prediction_count", 0) >= MAX_CLOUD_PREDICTIONS
     predict_clicked = st.button(
@@ -195,6 +215,7 @@ def main() -> None:
                 "result": result,
                 "preprocess_info": preprocess_info,
                 "want_stt": want_stt,
+                "want_segments": want_segments,
             }
             if IS_CLOUD:
                 st.session_state["cloud_prediction_count"] = (
@@ -244,6 +265,7 @@ def main() -> None:
     result = cache["result"]
     preprocess_info = cache["preprocess_info"]
     want_stt = cache.get("want_stt", False)
+    want_segments = cache.get("want_segments", False)
 
     st.markdown(
         """
@@ -269,13 +291,23 @@ def main() -> None:
         if "transcript" not in cache:
             with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
                 audio_file.seek(0)
-                transcript, stt_ok = safe_transcribe(
-                    audio_file,
-                    WHISPER_MODEL,
-                    device_name,
-                    WHISPER_LANGUAGE,
-                    pipeline_loader=load_whisper_lazy,
-                )
+                if want_segments:
+                    transcript, raw_segments, stt_ok = safe_transcribe_segments(
+                        audio_file,
+                        WHISPER_MODEL,
+                        device_name,
+                        WHISPER_LANGUAGE,
+                        pipeline_loader=load_whisper_lazy,
+                    )
+                    cache["raw_segments"] = raw_segments
+                else:
+                    transcript, stt_ok = safe_transcribe(
+                        audio_file,
+                        WHISPER_MODEL,
+                        device_name,
+                        WHISPER_LANGUAGE,
+                        pipeline_loader=load_whisper_lazy,
+                    )
                 cache["transcript"] = transcript
                 cache["stt_ok"] = stt_ok
                 gc.collect()
@@ -285,6 +317,23 @@ def main() -> None:
                 "Catatan: transkripsi Whisper tidak tersedia sementara. "
                 "Analisis emosi tetap berjalan normal."
             )
+
+        raw_segments = cache.get("raw_segments")
+        if raw_segments:
+            if "segment_results" not in cache:
+                audio_file.seek(0)
+                waveform_16k = get_transcription_waveform(audio_file)
+                cache["segment_results"] = run_segment_predictions(waveform_16k, raw_segments, device_name)
+            segment_results = cache["segment_results"]
+            if segment_results:
+                render_segment_timeline(segment_results)
+                if len(segment_results) < len(raw_segments):
+                    st.caption(
+                        f"Menampilkan {len(segment_results)} dari {len(raw_segments)} segmen terdeteksi "
+                        "(segmen sangat pendek dilewati atau dibatasi maks 20 segmen)."
+                    )
+            else:
+                st.info("Tidak ada segmen yang cukup panjang untuk dianalisis per-segmen.")
 
     st.markdown("#### Top 3 Emosi")
     render_top3_cards(result["probabilities_df"])

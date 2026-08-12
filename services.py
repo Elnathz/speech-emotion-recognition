@@ -17,7 +17,7 @@ except ImportError:
         from transformers.models.wav2vec2.feature_extraction_wav2vec2 import Wav2Vec2FeatureExtractor as FeatureExtractor
 
 from model import load_model
-from utils import load_audio, preprocess_audio, predict_emotion
+from utils import MIN_DURATION_SECONDS, TARGET_SAMPLE_RATE, load_audio, preprocess_audio, predict_emotion, slice_waveform
 from config import SER_BACKBONE
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
@@ -112,3 +112,25 @@ def run_prediction(uploaded_file, device_name: str) -> tuple[dict, dict]:
         result = predict_emotion(model, processor, processed_waveform, device)
         gc.collect()
     return result, preprocess_info
+
+
+def run_segment_predictions(
+    waveform_16k, segments: list[dict], device_name: str, max_segments: int = 20
+) -> list[dict]:
+    """Jalankan prediksi emosi per-segmen transkrip, reuse pipeline preprocessing & model yang sama."""
+    model, device = load_ser_model(device_name)
+    processor = load_feature_extractor()
+
+    results = []
+    with st.spinner("Menganalisis emosi per-segmen..."):
+        for seg in segments[:max_segments]:
+            if seg["end"] - seg["start"] < MIN_DURATION_SECONDS:
+                continue
+            chunk = slice_waveform(waveform_16k, seg["start"], seg["end"])
+            processed_waveform, _ = preprocess_audio(
+                torch.from_numpy(chunk).unsqueeze(0), TARGET_SAMPLE_RATE
+            )
+            result = predict_emotion(model, processor, processed_waveform, device)
+            results.append({**seg, "result": result})
+        gc.collect()
+    return results
