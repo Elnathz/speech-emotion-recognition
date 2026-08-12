@@ -1,5 +1,8 @@
 """Komponen UI murni untuk merender elemen antarmuka."""
 
+import json
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 from config import EMOTION_ICONS, EMOTION_COLORS
@@ -124,6 +127,13 @@ def render_metadata_card(
     )
 
 
+def render_waveform_chart(envelope_df: pd.DataFrame) -> None:
+    if envelope_df.empty:
+        return
+    st.markdown('<div class="meta-label" style="margin-top:0.75rem;">Bentuk Gelombang</div>', unsafe_allow_html=True)
+    st.line_chart(envelope_df, height=140, color=["#fafafa", "#737373"])
+
+
 def render_top3_cards(prob_df: pd.DataFrame) -> None:
     top3 = prob_df.head(3).reset_index(drop=True)
     cols = st.columns(3)
@@ -151,7 +161,7 @@ def render_probability_bars(prob_df: pd.DataFrame, highlight: str | None = None)
     for _, row in prob_df.iterrows():
         emotion = row["Emosi"]
         pct = float(row["Persentase (%)"])
-        color = EMOTION_COLORS.get(emotion, "#2563eb")
+        color = EMOTION_COLORS.get(emotion, "#a3a3a3")
         weight = "700" if emotion == highlight else "500"
         st.markdown(
             f"""
@@ -159,7 +169,7 @@ def render_probability_bars(prob_df: pd.DataFrame, highlight: str | None = None)
                 <span style="font-weight:{weight}; text-transform:capitalize;">
                     {EMOTION_ICONS.get(emotion, "")} {emotion}
                 </span>
-                <span style="font-weight:650; color:#60a5fa;">{pct:.1f}%</span>
+                <span style="font-weight:650; color:#fafafa;">{pct:.1f}%</span>
             </div>
             <div class="prob-bar-wrap">
                 <div class="prob-bar-fill" style="width:{pct:.1f}%; background:{color};"></div>
@@ -169,11 +179,43 @@ def render_probability_bars(prob_df: pd.DataFrame, highlight: str | None = None)
         )
 
 
+def render_export_buttons(result: dict, transcript: str | None, filename: str) -> None:
+    """Tombol unduh hasil prediksi sebagai CSV atau JSON."""
+    prob_df = result["probabilities_df"][["Emosi", "Persentase (%)"]]
+    payload = {
+        "filename": filename,
+        "predicted_label": result["predicted_label"],
+        "confidence": result["confidence"],
+        "probabilities": {
+            row["Emosi"]: round(float(row["Persentase (%)"]), 2) for _, row in prob_df.iterrows()
+        },
+        "transcript": transcript,
+    }
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button(
+            "Unduh CSV",
+            data=prob_df.to_csv(index=False).encode("utf-8"),
+            file_name=f"ser_hasil_{Path(filename).stem}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with c2:
+        st.download_button(
+            "Unduh JSON",
+            data=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name=f"ser_hasil_{Path(filename).stem}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+
 def render_result_card(summary: dict) -> None:
     label = summary["top_label"]
     confidence = summary["top_pct"] / 100
     icon = EMOTION_ICONS.get(label, "🎭")
-    accent = EMOTION_COLORS.get(label, "#60a5fa")
+    accent = EMOTION_COLORS.get(label, "#a3a3a3")
 
     margin_html = ""
     if summary["second_label"]:
