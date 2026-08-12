@@ -1,5 +1,6 @@
 """Komponen UI murni untuk merender elemen antarmuka."""
 
+import html
 import json
 from pathlib import Path
 
@@ -18,40 +19,24 @@ def format_file_size(size_bytes: int | None) -> str:
     return f"{size_bytes / (1024 * 1024):.2f} MB"
 
 
-def summarize_prediction(result: dict) -> dict:
-    """Ringkas prediksi untuk tampilan ranking & margin (UI only)."""
-    prob_df = result["probabilities_df"]
-    top_pct = float(prob_df.iloc[0]["Persentase (%)"])
-
-    second_label = None
-    second_pct = 0.0
-    if len(prob_df) > 1:
-        second_label = str(prob_df.iloc[1]["Emosi"])
-        second_pct = float(prob_df.iloc[1]["Persentase (%)"])
-
-    margin_pp = top_pct - second_pct
-
-    if margin_pp >= 20:
-        separation = "Pemisahan kuat dari emosi lain"
-    elif margin_pp >= 10:
-        separation = "Pemisahan cukup jelas dari emosi lain"
-    else:
-        separation = "Pemisahan tipis — emosi lain masih dekat"
-
-    return {
-        "top_label": result["predicted_label"],
-        "top_pct": top_pct,
-        "second_label": second_label,
-        "second_pct": second_pct,
-        "margin_pp": margin_pp,
-        "separation": separation,
-        "num_classes": len(prob_df),
-    }
+def render_section_header(step: str, title: str = "", desc: str | None = None) -> None:
+    title_html = f'<div class="section-title">{html.escape(title)}</div>' if title else ""
+    desc_html = f'<p class="section-desc">{html.escape(desc)}</p>' if desc else ""
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="section-step">{html.escape(step)}</div>
+            {title_html}
+            {desc_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_transcript_card(text: str) -> None:
     if text:
-        body = f'<div class="transcript-text">"{text}"</div>'
+        body = f'<div class="transcript-text">"{html.escape(text)}"</div>'
     else:
         body = (
             '<div class="transcript-empty">Tidak ada ucapan yang terdeteksi '
@@ -75,20 +60,14 @@ def _format_timestamp(seconds: float) -> str:
 
 def render_segment_timeline(segments: list[dict]) -> None:
     """Timeline emosi per-segmen transkrip (opt-in, hasil dari run_segment_predictions)."""
-    st.markdown(
-        '<div class="section-card">'
-        '<div class="section-step">Per-Segmen</div>'
-        '<div class="section-title">Emosi Sepanjang Transkrip</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    render_section_header("Per-Segmen", "Emosi Sepanjang Transkrip")
     for seg in segments:
         label = seg["result"]["predicted_label"]
         confidence = seg["result"]["confidence"] * 100
         icon = EMOTION_ICONS.get(label, "🎭")
         accent = EMOTION_COLORS.get(label, "#a3a3a3")
         time_range = f"{_format_timestamp(seg['start'])}–{_format_timestamp(seg['end'])}"
-        text = seg["text"] or "(tanpa teks)"
+        text = html.escape(seg["text"] or "(tanpa teks)")
         st.markdown(
             f"""
             <div class="segment-card" style="--emotion-color:{accent};">
@@ -140,14 +119,7 @@ def render_metadata_card(
     channels: int,
     file_size: str,
 ) -> None:
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Metadata Audio</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Metadata Audio")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f'<div class="meta-label">Nama File</div><div class="meta-value">{filename}</div>', unsafe_allow_html=True)

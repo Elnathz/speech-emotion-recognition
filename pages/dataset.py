@@ -8,6 +8,7 @@ import streamlit as st
 from config import EMOTION_COLORS
 from services import load_dataset_metadata, load_label_noise_candidates
 from utils import ID2LABEL
+from components.ui import render_section_header
 
 LABELS_ORDER = [ID2LABEL[i] for i in sorted(ID2LABEL)]
 SPLIT_COLORS = {"train": "#fafafa", "val": "#a3a3a3", "test": "#525252"}
@@ -15,18 +16,6 @@ SPLIT_COLORS = {"train": "#fafafa", "val": "#a3a3a3", "test": "#525252"}
 
 def _id_number(n: int) -> str:
     return f"{n:,}".replace(",", ".")
-
-
-def _section(step: str, title: str) -> None:
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="section-step">{step}</div>
-            <div class="section-title">{title}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def main() -> None:
@@ -51,7 +40,7 @@ def main() -> None:
     c3.metric("Jumlah Bahasa", df["bahasa"].nunique())
     c4.metric("Jumlah Kelas", len(LABELS_ORDER))
 
-    _section("Distribusi", "Sampel per Kategori")
+    render_section_header("Distribusi", "Sampel per Kategori")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -121,7 +110,7 @@ def main() -> None:
     )
     st.altair_chart(hist_chart, use_container_width=True)
 
-    _section("Eksplorasi", "Cari Sampel Data")
+    render_section_header("Eksplorasi", "Cari Sampel Data")
 
     fc1, fc2, fc3 = st.columns(3)
     emosi_filter = fc1.selectbox("Emosi", ["Semua"] + LABELS_ORDER)
@@ -143,7 +132,7 @@ def main() -> None:
         hide_index=True,
     )
 
-    _section("Kualitas Data", "Kandidat Label Bising")
+    render_section_header("Kualitas Data", "Kandidat Label Bising")
 
     noise_df = load_label_noise_candidates()
     if noise_df is not None:

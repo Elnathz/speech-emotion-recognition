@@ -1,5 +1,39 @@
 # Walkthrough
 
+## [2026-08-13] Redesign UI Streamlit: Konsolidasi Token CSS & Komponen Section Header
+
+### Konteks
+Permintaan redesign tampilan Streamlit. Setelah eksplorasi kode, arsitektur komponen (`components/ui.py`, `css.py`, `sidebar.py`, `pages/*.py`) sudah cukup baik, tapi implementasi CSS-nya berantakan: warna/radius ditulis sebagai literal `rgba(...)` berulang di ~480 baris `components/css.py`, dan markup section header (step label + judul) diduplikasi manual di 4 halaman berbeda. Pengguna memutuskan lingkup redesign: fokus visual look & feel, tetap monokrom (dipoles bukan diganti skema warna), mencakup semua halaman.
+
+### Keputusan Desain
+- Tidak mengganti palet warna monokrom yang sudah ada, hanya menjadikannya konsisten lewat CSS custom properties (`:root`) di `components/css.py`, bukan membangun sistem token Python baru karena `EMOTION_COLORS`/`EMOTION_ICONS` di `config.py` memang harus tetap di Python (dipakai untuk inline style).
+- Skala radius disederhanakan jadi 3 tingkat (`--radius-sm/md/lg`) menggantikan campuran 10-20px yang sebelumnya dipilih tidak konsisten antar komponen.
+- Transisi hover ditambahkan pada card yang berperilaku seperti daftar (`section-card`, `top3-card`, `segment-card`, item sidebar), bukan pada `hero-card`/`result-card` yang statis.
+- Inkonsistensi confusion matrix (PNG statis di `dashboard.py` vs Altair recompute di `model.py`) sengaja tidak disentuh karena itu masalah data/logic, bukan visual.
+- Tidak membangun theming light/dark karena pengguna memilih tetap monokrom.
+
+### File yang Diubah
+- `components/css.py`: tambah blok `:root` token (surface, border, teks, radius, transisi), ganti literal berulang dengan `var(--token)`, tambah hover state.
+- `components/ui.py`: tambah `render_section_header(step, title="", desc=None)`, escape teks dinamis (`transcript`, `segment text`) dengan `html.escape()` di `render_transcript_card()` dan `render_segment_timeline()`, pindahkan `summarize_prediction()` keluar (murni logic, bukan render).
+- `utils.py`: terima `summarize_prediction()` dari `components/ui.py`.
+- `pages/analisis.py`, `pages/dashboard.py`, `pages/model.py`: ganti markup `section-card` manual (masing-masing 2-3 lokasi) dengan pemanggilan `render_section_header()`.
+- `pages/dataset.py`: hapus helper lokal `_section()`, pakai `render_section_header()` yang dibagi bersama.
+
+### Yang Tidak Diubah
+- Skema warna monokrom, `EMOTION_COLORS`/`EMOTION_ICONS` di `config.py`.
+- Layout kolom (`st.columns`) di setiap halaman, jadi responsivitas mobile-first yang sudah ada tidak berubah; hover state hanya berlaku desktop dan tidak memengaruhi perangkat sentuh.
+- Confusion matrix ganda (PNG di dashboard vs Altair di halaman model), logic inferensi, arsitektur model, pipeline audio.
+
+### Verifikasi
+- `python -m py_compile` untuk seluruh file yang diubah plus `app.py`, `config.py`, `model.py`, `services.py` -> tanpa error sintaks.
+- `streamlit.testing.v1.AppTest` dijalankan lewat entry point `app.py` (mensimulasikan `st.navigation` asli, bukan impor file halaman langsung) untuk keempat halaman (Analisis, Dashboard, Model, Dataset) -> tanpa exception, markup `render_section_header()` ter-render dengan benar termasuk escaping karakter HTML.
+- Server Streamlit dijalankan lokal (`.venv/bin/streamlit run app.py`) untuk memastikan proses start tanpa error sebelum verifikasi lewat AppTest.
+- Ditemukan (tapi tidak diperbaiki, di luar lingkup redesign visual): `AppTest.from_file("pages/dashboard.py")` yang dipanggil langsung (tanpa lewat `app.py`) gagal dengan `ImportError` karena tabrakan nama modul antara `model.py` di root dan `pages/model.py`. Dikonfirmasi lewat `git stash` bahwa masalah ini sudah ada sebelum redesign ini dan tidak muncul saat navigasi lewat `app.py` yang sebenarnya.
+
+### Follow-up yang Disarankan (Belum Dikerjakan)
+- Uji visual manual di browser (screenshot sebelum/sesudah tiap halaman) karena environment kerja ini tidak punya headless browser/Playwright untuk verifikasi otomatis.
+- Pertimbangkan menyatukan tabrakan nama `model.py`/`pages/model.py` yang ditemukan di atas, di luar lingkup task ini.
+
 ## [2026-08-12] Fitur Rekam Mikrofon Langsung (Live Record)
 
 ### Konteks

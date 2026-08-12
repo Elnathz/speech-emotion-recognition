@@ -8,6 +8,7 @@ import torch
 
 from config import EMOTION_COLORS, MODEL_DISPLAY_PATH, SER_BACKBONE
 from services import MODELS_DIR, load_dataset_metadata, load_model_metrics, load_ser_model
+from components.ui import render_section_header
 
 
 def _id_number(n: int) -> str:
@@ -48,15 +49,7 @@ def main() -> None:
     c3.metric("Akurasi Test", f"{test_acc * 100:.1f}%" if test_acc is not None else "—")
     c4.metric("Akurasi Validasi Terbaik", f"{val_acc * 100:.1f}%" if val_acc is not None else "—")
 
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Dataset</div>
-            <div class="section-title">Distribusi Sampel</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Dataset", "Distribusi Sampel")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -88,15 +81,7 @@ def main() -> None:
     sumber_df = df["sumber"].value_counts().rename("Jumlah")
     st.bar_chart(sumber_df, height=280)
 
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Model</div>
-            <div class="section-title">Kurva Training & Confusion Matrix</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Model", "Kurva Training & Confusion Matrix")
 
     curve_path = MODELS_DIR / "kurva_training_v7.png"
     cm_path = MODELS_DIR / "confusion_matrix_v7.png"

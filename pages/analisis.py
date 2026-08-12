@@ -34,12 +34,14 @@ from utils import (
     get_waveform_envelope,
     safe_transcribe,
     safe_transcribe_segments,
+    summarize_prediction,
 )
 
 from components.ui import (
     render_hero,
     render_empty_state,
     render_metadata_card,
+    render_section_header,
     render_top3_cards,
     render_probability_bars,
     render_result_card,
@@ -48,7 +50,6 @@ from components.ui import (
     render_waveform_chart,
     render_export_buttons,
     format_file_size,
-    summarize_prediction,
 )
 
 
@@ -86,15 +87,8 @@ def main() -> None:
             f"{model_error or 'Periksa file checkpoint di folder models/'}"
         )
 
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Langkah 1</div>
-            <div class="section-title">Sumber Audio</div>
-            <p class="section-desc">Unggah file .wav/.mp3 atau rekam langsung dari mikrofon.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    render_section_header(
+        "Langkah 1", "Sumber Audio", "Unggah file .wav/.mp3 atau rekam langsung dari mikrofon."
     )
 
     source_mode = st.radio(
@@ -156,15 +150,8 @@ def main() -> None:
         file_size=format_file_size(getattr(audio_file, "size", None)),
     )
 
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Langkah 2</div>
-            <div class="section-title">Pratinjau Audio</div>
-            <p class="section-desc">Pastikan audio dapat diputar sebelum melakukan prediksi.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    render_section_header(
+        "Langkah 2", "Pratinjau Audio", "Pastikan audio dapat diputar sebelum melakukan prediksi."
     )
     audio_file.seek(0)
     st.audio(audio_file)
@@ -267,15 +254,7 @@ def main() -> None:
     want_stt = cache.get("want_stt", False)
     want_segments = cache.get("want_segments", False)
 
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-step">Langkah 3</div>
-            <div class="section-title">Hasil Prediksi</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header("Langkah 3", "Hasil Prediksi")
 
     summary = summarize_prediction(result)
     render_result_card(summary)

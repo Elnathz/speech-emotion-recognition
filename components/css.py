@@ -6,6 +6,22 @@ def inject_custom_css() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --text-primary: #fafafa;
+            --text-secondary: rgba(229,229,229,0.82);
+            --text-body: #f5f5f5;
+            --text-muted: rgba(212,212,212,0.78);
+            --text-tertiary: #a3a3a3;
+            --text-quaternary: #737373;
+            --surface-1: rgba(10,10,10,0.45);
+            --surface-2: rgba(23,23,23,0.55);
+            --border-subtle: rgba(163,163,163,0.14);
+            --border-strong: rgba(255,255,255,0.22);
+            --radius-sm: 10px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition-fast: 150ms ease;
+        }
         .block-container {
             padding-top: 1.5rem;
             padding-bottom: 2rem;
@@ -13,8 +29,8 @@ def inject_custom_css() -> None:
         }
         .hero-card {
             background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 16px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
             padding: 1.75rem 2rem;
             margin-bottom: 1.5rem;
         }
@@ -26,15 +42,15 @@ def inject_custom_css() -> None:
         }
         .hero-subtitle {
             font-size: 1.02rem;
-            color: rgba(229,229,229,0.82);
+            color: var(--text-secondary);
             margin: 0 0 1rem 0;
             line-height: 1.55;
         }
         .hero-badge {
             display: inline-block;
             background: rgba(255,255,255,0.14);
-            color: #fafafa;
-            border: 1px solid rgba(255,255,255,0.28);
+            color: var(--text-primary);
+            border: 1px solid var(--border-strong);
             border-radius: 999px;
             padding: 0.28rem 0.85rem;
             font-size: 0.78rem;
@@ -42,18 +58,23 @@ def inject_custom_css() -> None:
             letter-spacing: 0.02em;
         }
         .section-card {
-            background: rgba(23,23,23,0.55);
-            border: 1px solid rgba(163,163,163,0.14);
-            border-radius: 16px;
+            background: var(--surface-2);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
             padding: 1.25rem 1.5rem;
             margin-bottom: 1rem;
+            transition: transform var(--transition-fast), border-color var(--transition-fast);
+        }
+        .section-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-strong);
         }
         .section-step {
             font-size: 0.78rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: #fafafa;
+            color: var(--text-primary);
             margin-bottom: 0.35rem;
         }
         .section-title {
@@ -63,12 +84,12 @@ def inject_custom_css() -> None:
         }
         .section-desc {
             font-size: 0.92rem;
-            color: rgba(212,212,212,0.78);
+            color: var(--text-muted);
             margin: 0 0 0.75rem 0;
         }
         .meta-label {
             font-size: 0.75rem;
-            color: rgba(163,163,163,0.95);
+            color: var(--text-tertiary);
             text-transform: uppercase;
             letter-spacing: 0.06em;
             margin-bottom: 0.15rem;
@@ -76,24 +97,24 @@ def inject_custom_css() -> None:
         .meta-value {
             font-size: 1rem;
             font-weight: 600;
-            color: #fafafa;
+            color: var(--text-primary);
             word-break: break-word;
         }
         .empty-state {
             text-align: center;
             padding: 2.5rem 1.5rem;
             border: 1px dashed rgba(163,163,163,0.28);
-            border-radius: 16px;
+            border-radius: var(--radius-md);
             background: rgba(10,10,10,0.35);
             margin: 1rem 0 1.5rem 0;
         }
         .empty-icon { font-size: 2.2rem; margin-bottom: 0.5rem; }
         .empty-title { font-size: 1.05rem; font-weight: 650; margin-bottom: 0.25rem; }
-        .empty-desc { font-size: 0.92rem; color: rgba(212,212,212,0.72); }
+        .empty-desc { font-size: 0.92rem; color: var(--text-muted); }
         .result-card {
             background: linear-gradient(160deg, rgba(23,23,23,0.92), rgba(10,10,10,0.82));
-            border: 1px solid rgba(255,255,255,0.22);
-            border-radius: 20px;
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
             padding: 2.75rem 2rem;
             margin: 1rem 0 1.25rem 0;
             text-align: center;
@@ -123,7 +144,7 @@ def inject_custom_css() -> None:
             font-weight: 650;
             text-transform: uppercase;
             letter-spacing: 0.12em;
-            color: #a3a3a3;
+            color: var(--text-tertiary);
             margin-bottom: 0.35rem;
         }
         .result-confidence {
@@ -138,7 +159,7 @@ def inject_custom_css() -> None:
         }
         .result-dominance {
             font-size: 0.82rem;
-            color: #a3a3a3;
+            color: var(--text-tertiary);
             margin: 0 0 0.5rem 0;
             text-transform: uppercase;
             letter-spacing: 0.08em;
@@ -146,7 +167,7 @@ def inject_custom_css() -> None:
         }
         .result-rank-note {
             font-size: 0.92rem;
-            color: rgba(212,212,212,0.82);
+            color: var(--text-muted);
             margin: 0.85rem 0 0 0;
             line-height: 1.45;
         }
@@ -156,22 +177,27 @@ def inject_custom_css() -> None:
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
             background: rgba(255,255,255,0.10);
-            border: 1px solid rgba(255,255,255,0.22);
+            border: 1px solid var(--border-strong);
             font-size: 0.82rem;
-            color: #fafafa;
+            color: var(--text-primary);
             font-weight: 600;
         }
         .top3-card {
-            background: rgba(10,10,10,0.55);
-            border: 1px solid rgba(163,163,163,0.16);
-            border-radius: 14px;
+            background: var(--surface-1);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
             padding: 0.9rem 1rem;
             text-align: center;
             min-height: 118px;
+            transition: transform var(--transition-fast), border-color var(--transition-fast);
+        }
+        .top3-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-strong);
         }
         .top3-rank {
             font-size: 0.72rem;
-            color: #a3a3a3;
+            color: var(--text-tertiary);
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
@@ -180,20 +206,20 @@ def inject_custom_css() -> None:
         .top3-pct {
             font-size: 1.15rem;
             font-weight: 700;
-            color: #fafafa;
+            color: var(--text-primary);
             margin-top: 0.15rem;
         }
         .top3-conf-label {
             font-size: 0.68rem;
-            color: #737373;
+            color: var(--text-quaternary);
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
         .transcript-card {
             background: linear-gradient(145deg, rgba(23,23,23,0.85), rgba(10,10,10,0.78));
-            border: 1px solid rgba(255,255,255,0.20);
-            border-left: 4px solid #fafafa;
-            border-radius: 14px;
+            border: 1px solid var(--border-strong);
+            border-left: 4px solid var(--text-primary);
+            border-radius: var(--radius-md);
             padding: 1.1rem 1.35rem;
             margin: 0.5rem 0 1rem 0;
         }
@@ -202,12 +228,12 @@ def inject_custom_css() -> None:
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: #fafafa;
+            color: var(--text-primary);
             margin-bottom: 0.45rem;
         }
         .transcript-text {
             font-size: 1.05rem;
-            color: #f5f5f5;
+            color: var(--text-body);
             line-height: 1.55;
             font-style: italic;
         }
@@ -217,24 +243,28 @@ def inject_custom_css() -> None:
             font-style: italic;
         }
         .segment-card {
-            background: rgba(23,23,23,0.55);
-            border: 1px solid rgba(163,163,163,0.14);
+            background: var(--surface-2);
+            border: 1px solid var(--border-subtle);
             border-left: 3px solid var(--emotion-color, #a3a3a3);
-            border-radius: 12px;
+            border-radius: var(--radius-sm);
             padding: 0.75rem 1rem;
             margin-bottom: 0.6rem;
+            transition: transform var(--transition-fast), border-color var(--transition-fast);
+        }
+        .segment-card:hover {
+            transform: translateY(-2px);
         }
         .segment-time {
             font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.06em;
-            color: #a3a3a3;
+            color: var(--text-tertiary);
             margin-bottom: 0.3rem;
         }
         .segment-text {
             font-size: 0.95rem;
-            color: #f5f5f5;
+            color: var(--text-body);
             font-style: italic;
             margin-bottom: 0.45rem;
         }
@@ -260,11 +290,12 @@ def inject_custom_css() -> None:
         .prob-bar-fill {
             height: 10px;
             border-radius: 999px;
+            transition: width var(--transition-fast);
         }
         .sidebar-pill {
             display: inline-block;
             background: rgba(38,38,38,0.75);
-            border: 1px solid rgba(163,163,163,0.18);
+            border: 1px solid var(--border-subtle);
             border-radius: 999px;
             padding: 0.18rem 0.62rem;
             margin: 0.12rem 0.18rem 0.12rem 0;
@@ -273,8 +304,8 @@ def inject_custom_css() -> None:
         }
         .sidebar-header {
             background: linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 14px;
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-md);
             padding: 1rem 1rem 0.85rem 1rem;
             margin-bottom: 0.85rem;
             text-align: center;
@@ -291,7 +322,7 @@ def inject_custom_css() -> None:
         }
         .sidebar-header-sub {
             font-size: 0.78rem;
-            color: rgba(212,212,212,0.72);
+            color: var(--text-secondary);
             margin: 0.25rem 0 0 0;
             line-height: 1.4;
         }
@@ -302,9 +333,9 @@ def inject_custom_css() -> None:
             margin-bottom: 0.85rem;
         }
         .sidebar-stat-card {
-            background: rgba(10,10,10,0.55);
-            border: 1px solid rgba(163,163,163,0.14);
-            border-radius: 12px;
+            background: var(--surface-1);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
             padding: 0.65rem 0.7rem;
         }
         .sidebar-stat-icon {
@@ -313,7 +344,7 @@ def inject_custom_css() -> None:
         }
         .sidebar-stat-label {
             font-size: 0.68rem;
-            color: #a3a3a3;
+            color: var(--text-tertiary);
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 0.1rem;
@@ -321,11 +352,11 @@ def inject_custom_css() -> None:
         .sidebar-stat-value {
             font-size: 0.82rem;
             font-weight: 650;
-            color: #f5f5f5;
+            color: var(--text-body);
             line-height: 1.25;
         }
         .sidebar-status-card {
-            border-radius: 12px;
+            border-radius: var(--radius-sm);
             padding: 0.7rem 0.85rem;
             margin-bottom: 0.85rem;
             display: flex;
@@ -334,7 +365,7 @@ def inject_custom_css() -> None:
         }
         .sidebar-status-ok {
             background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.26);
+            border: 1px solid var(--border-strong);
         }
         .sidebar-status-fail {
             background: rgba(248,113,113,0.1);
@@ -347,7 +378,7 @@ def inject_custom_css() -> None:
             flex-shrink: 0;
         }
         .sidebar-status-dot.ok {
-            background: #fafafa;
+            background: var(--text-primary);
             box-shadow: 0 0 8px rgba(255,255,255,0.55);
         }
         .sidebar-status-dot.fail {
@@ -357,11 +388,11 @@ def inject_custom_css() -> None:
         .sidebar-status-text {
             font-size: 0.84rem;
             font-weight: 650;
-            color: #fafafa;
+            color: var(--text-primary);
         }
         .sidebar-status-sub {
             font-size: 0.72rem;
-            color: rgba(212,212,212,0.65);
+            color: var(--text-muted);
             margin-top: 0.05rem;
         }
         .sidebar-section-label {
@@ -369,7 +400,7 @@ def inject_custom_css() -> None:
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.07em;
-            color: #fafafa;
+            color: var(--text-primary);
             margin: 0.15rem 0 0.55rem 0;
         }
         .sidebar-emotion-grid {
@@ -382,18 +413,22 @@ def inject_custom_css() -> None:
             display: flex;
             align-items: center;
             gap: 0.45rem;
-            background: rgba(10,10,10,0.45);
-            border: 1px solid rgba(163,163,163,0.12);
+            background: var(--surface-1);
+            border: 1px solid var(--border-subtle);
             border-left: 3px solid var(--emotion-color, #a3a3a3);
-            border-radius: 10px;
+            border-radius: var(--radius-sm);
             padding: 0.42rem 0.55rem;
             font-size: 0.78rem;
             text-transform: capitalize;
+            transition: transform var(--transition-fast);
+        }
+        .sidebar-emotion-item:hover {
+            transform: translateY(-2px);
         }
         .sidebar-emotion-emoji { font-size: 1rem; line-height: 1; }
         .sidebar-emotion-id {
             font-size: 0.65rem;
-            color: #737373;
+            color: var(--text-quaternary);
             margin-left: auto;
         }
         .sidebar-history-list {
@@ -406,26 +441,30 @@ def inject_custom_css() -> None:
             display: flex;
             align-items: center;
             gap: 0.55rem;
-            background: rgba(10,10,10,0.45);
-            border: 1px solid rgba(163,163,163,0.12);
-            border-radius: 10px;
+            background: var(--surface-1);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
             padding: 0.45rem 0.6rem;
+            transition: transform var(--transition-fast);
+        }
+        .sidebar-history-item:hover {
+            transform: translateY(-2px);
         }
         .sidebar-history-emoji { font-size: 1.15rem; line-height: 1; }
         .sidebar-history-label {
             font-size: 0.8rem;
             font-weight: 650;
-            color: #f5f5f5;
+            color: var(--text-body);
             text-transform: capitalize;
         }
         .sidebar-history-meta {
             font-size: 0.68rem;
-            color: #737373;
+            color: var(--text-quaternary);
         }
         .sidebar-howto {
-            background: rgba(23,23,23,0.45);
-            border: 1px solid rgba(163,163,163,0.12);
-            border-radius: 12px;
+            background: var(--surface-2);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
             padding: 0.75rem 0.85rem;
             margin-bottom: 0.75rem;
         }
@@ -438,7 +477,7 @@ def inject_custom_css() -> None:
         .sidebar-howto-step:last-child { margin-bottom: 0; }
         .sidebar-howto-num {
             background: rgba(255,255,255,0.16);
-            color: #fafafa;
+            color: var(--text-primary);
             border-radius: 999px;
             width: 1.35rem;
             height: 1.35rem;
@@ -451,16 +490,16 @@ def inject_custom_css() -> None:
         }
         .sidebar-howto-text {
             font-size: 0.78rem;
-            color: rgba(229,229,229,0.85);
+            color: var(--text-secondary);
             line-height: 1.35;
             padding-top: 0.05rem;
         }
         .sidebar-divider {
             border: none;
-            border-top: 1px solid rgba(163,163,163,0.12);
+            border-top: 1px solid var(--border-subtle);
             margin: 0.65rem 0;
         }
-        .status-ok { color: #fafafa; font-weight: 650; }
+        .status-ok { color: var(--text-primary); font-weight: 650; }
         .status-fail { color: #f87171; font-weight: 650; }
         div[data-testid="stSidebar"] {
             background: linear-gradient(180deg, rgba(5,5,5,0.98), rgba(0,0,0,0.92));
@@ -474,6 +513,7 @@ def inject_custom_css() -> None:
             padding: 0.72rem 1rem !important;
             font-weight: 650 !important;
             box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important;
+            transition: box-shadow var(--transition-fast), background var(--transition-fast) !important;
         }
         div.stButton > button[kind="primary"]:hover {
             background: linear-gradient(135deg, #e5e5e5, #c7c7c7) !important;
