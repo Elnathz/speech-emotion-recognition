@@ -192,6 +192,26 @@ def get_audio_info(file: io.BytesIO | str | Path) -> dict[str, Any]:
     }
 
 
+def get_waveform_envelope(file: io.BytesIO | str | Path, num_points: int = 400) -> pd.DataFrame:
+    """Downsample waveform ke envelope min/max per bucket untuk visualisasi ringan (tanpa matplotlib)."""
+    waveform, sample_rate = load_audio(file)
+    y = waveform.squeeze(0).numpy()
+    total_samples = len(y)
+    if total_samples == 0:
+        return pd.DataFrame({"Puncak": [], "Lembah": []})
+
+    bucket_size = max(1, total_samples // num_points)
+    peaks, troughs = [], []
+    for i in range(0, total_samples, bucket_size):
+        chunk = y[i : i + bucket_size]
+        peaks.append(float(chunk.max()))
+        troughs.append(float(chunk.min()))
+
+    duration = total_samples / sample_rate
+    time_axis = np.linspace(0, duration, len(peaks))
+    return pd.DataFrame({"Detik": time_axis, "Puncak": peaks, "Lembah": troughs}).set_index("Detik")
+
+
 def get_transcription_waveform(file: io.BytesIO | str | Path) -> "np.ndarray":
     """Ambil waveform mono 16 kHz PENUH (tanpa potong) untuk transkrip STT."""
     waveform, sample_rate = load_audio(file)

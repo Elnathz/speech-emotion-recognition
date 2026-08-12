@@ -115,7 +115,10 @@ Berikut adalah daftar masalah umum yang sering terjadi beserta solusinya:
 
 ```
 speech-emotion-detection/
-├── app.py                  # Aplikasi Streamlit utama (UI/UX)
+├── app.py                  # Entry point Streamlit — konfigurasi global & navigasi antar halaman
+├── pages/
+│   ├── analisis.py         # Halaman Analisis Emosi (upload/rekam audio, prediksi)
+│   └── dashboard.py        # Halaman Dashboard — statistik dataset & performa model
 ├── model.py                # Arsitektur WavLMSERModel PyTorch & auto-download model
 ├── utils.py                # Preprocessing audio (16kHz mono, 4s crop, STT pipeline)
 ├── requirements.txt        # Daftar dependensi Python

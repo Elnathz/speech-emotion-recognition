@@ -1,0 +1,331 @@
+"""Halaman analisis emosi Speech Emotion Recognition berbasis WavLM."""
+
+from __future__ import annotations
+
+import gc
+import hashlib
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+import torch
+
+from config import (
+    IS_CLOUD,
+    ENABLE_STT,
+    WHISPER_MODEL,
+    WHISPER_LANGUAGE,
+    MAX_CLOUD_PREDICTIONS,
+    MODEL_DISPLAY_PATH,
+)
+from services import (
+    check_model_ready,
+    run_prediction,
+    load_whisper_lazy,
+)
+from utils import ID2LABEL, LABEL2ID, get_audio_info, get_waveform_envelope, safe_transcribe
+
+from components.ui import (
+    render_hero,
+    render_empty_state,
+    render_metadata_card,
+    render_top3_cards,
+    render_probability_bars,
+    render_result_card,
+    render_transcript_card,
+    render_waveform_chart,
+    render_export_buttons,
+    format_file_size,
+    summarize_prediction,
+)
+
+
+def _audio_key(audio_file, source: str) -> tuple:
+    """Identitas cache berbasis hash byte, bukan nama file.
+
+    Rekaman mikrofon dapat memiliki nama/ukuran yang sama antar sesi,
+    sehingga name+size tidak cukup untuk invalidasi cache prediksi.
+    """
+    audio_file.seek(0)
+    digest = hashlib.sha256(audio_file.getvalue()).hexdigest()
+    audio_file.seek(0)
+    return (source, digest)
+
+
+def _clear_prediction_cache() -> None:
+    st.session_state.pop("prediction_cache", None)
+    st.session_state.pop("prediction_file_key", None)
+
+
+def _reset_cloud_session() -> None:
+    st.session_state.pop("cloud_prediction_count", None)
+    _clear_prediction_cache()
+
+
+def main() -> None:
+    device_name = "cuda" if torch.cuda.is_available() else "cpu"
+
+    render_hero()
+
+    model_ready, model_error = check_model_ready(device_name)
+    if not model_ready:
+        st.error(
+            "Model gagal dimuat sehingga prediksi tidak dapat dijalankan.\n\n"
+            f"{model_error or 'Periksa file checkpoint di folder models/'}"
+        )
+
+    st.markdown(
+        """
+        <div class="section-card">
+            <div class="section-step">Langkah 1</div>
+            <div class="section-title">Sumber Audio</div>
+            <p class="section-desc">Unggah file .wav/.mp3 atau rekam langsung dari mikrofon.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    source_mode = st.radio(
+        "Sumber audio",
+        options=["Unggah File", "Rekam Mikrofon"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    audio_file = None
+    source_label = "upload"
+
+    if source_mode == "Unggah File":
+        audio_file = st.file_uploader(
+            "Pilih file audio",
+            type=["wav", "mp3"],
+            label_visibility="collapsed",
+            help="Format yang didukung: .wav dan .mp3",
+        )
+        source_label = "upload"
+    else:
+        audio_file = st.audio_input(
+            "Rekam suara",
+            key="recorded_audio",
+        )
+        source_label = "record"
+        if audio_file is not None and not getattr(audio_file, "name", None):
+            audio_file.name = "rekaman-mikrofon.wav"
+
+    if audio_file is None:
+        _reset_cloud_session()
+        render_empty_state()
+        return
+
+    file_key = _audio_key(audio_file, source_label)
+    if st.session_state.get("prediction_file_key") != file_key:
+        _clear_prediction_cache()
+        st.session_state["prediction_file_key"] = file_key
+
+    display_name = Path(audio_file.name).name if getattr(audio_file, "name", None) else "rekaman-mikrofon.wav"
+
+    try:
+        audio_file.seek(0)
+        audio_info = get_audio_info(audio_file)
+        audio_info["filename"] = display_name
+    except Exception as exc:
+        st.error(
+            "File audio tidak dapat diproses. "
+            "Coba gunakan file .wav atau .mp3 dengan durasi pendek dan kualitas suara jelas.\n\n"
+            f"Detail teknis: {type(exc).__name__}: {exc}"
+        )
+        return
+
+    render_metadata_card(
+        filename=audio_info["filename"],
+        duration_sec=audio_info["duration_sec"],
+        sample_rate=audio_info["sample_rate"],
+        channels=audio_info["channels"],
+        file_size=format_file_size(getattr(audio_file, "size", None)),
+    )
+
+    st.markdown(
+        """
+        <div class="section-card">
+            <div class="section-step">Langkah 2</div>
+            <div class="section-title">Pratinjau Audio</div>
+            <p class="section-desc">Pastikan audio dapat diputar sebelum melakukan prediksi.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    audio_file.seek(0)
+    st.audio(audio_file)
+    audio_file.seek(0)
+    render_waveform_chart(get_waveform_envelope(audio_file))
+
+    if IS_CLOUD:
+        used = st.session_state.get("cloud_prediction_count", 0)
+        if used >= MAX_CLOUD_PREDICTIONS:
+            st.info(
+                f"Mode cloud: maksimal **{MAX_CLOUD_PREDICTIONS} analisis per sesi** "
+                "(batas RAM server gratis). "
+                "**Refresh halaman (F5)** lalu upload file baru untuk analisis berikutnya."
+            )
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    cloud_limit_reached = IS_CLOUD and st.session_state.get("cloud_prediction_count", 0) >= MAX_CLOUD_PREDICTIONS
+    predict_clicked = st.button(
+        "Analisis Emosi",
+        type="primary",
+        use_container_width=True,
+        disabled=not model_ready or cloud_limit_reached,
+    )
+    reanalyze_clicked = False
+    if st.session_state.get("prediction_cache") is not None and not cloud_limit_reached:
+        reanalyze_clicked = st.button("Analisis Ulang", use_container_width=True, disabled=not model_ready)
+
+    want_stt = ENABLE_STT
+    should_predict = model_ready and (predict_clicked or reanalyze_clicked)
+    if should_predict and reanalyze_clicked:
+        _clear_prediction_cache()
+
+    if should_predict and not st.session_state.get("prediction_cache"):
+        try:
+            audio_file.seek(0)
+            result, preprocess_info = run_prediction(audio_file, device_name)
+            st.session_state["prediction_cache"] = {
+                "result": result,
+                "preprocess_info": preprocess_info,
+                "want_stt": want_stt,
+            }
+            if IS_CLOUD:
+                st.session_state["cloud_prediction_count"] = (
+                    st.session_state.get("cloud_prediction_count", 0) + 1
+                )
+            history = st.session_state.setdefault("prediction_history", [])
+            history.insert(
+                0,
+                {
+                    "filename": display_name,
+                    "label": result["predicted_label"],
+                    "confidence": result["confidence"],
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                },
+            )
+            del history[10:]
+        except FileNotFoundError as exc:
+            st.error(f"File model tidak ditemukan.\n\n{exc}")
+            return
+        except RuntimeError as exc:
+            error_text = str(exc)
+            if "tidak cocok" in error_text.lower() or "checkpoint" in error_text.lower():
+                st.error(f"Checkpoint tidak cocok dengan arsitektur model.\n\n{error_text}")
+            elif "HuggingFace" in error_text or "pretrained" in error_text.lower():
+                st.error(
+                    "Gagal memuat model HuggingFace. "
+                    "Periksa koneksi internet untuk unduhan pertama kali.\n\n"
+                    f"{error_text}"
+                )
+            else:
+                st.error(f"Terjadi kesalahan saat memuat model.\n\n{error_text}")
+            return
+        except Exception as exc:
+            st.error(
+                "File audio tidak dapat diproses. "
+                "Coba gunakan file .wav atau .mp3 dengan durasi pendek dan kualitas suara jelas.\n\n"
+                f"Detail teknis: {type(exc).__name__}: {exc}"
+            )
+            with st.expander("Traceback lengkap (debug)"):
+                st.code(traceback.format_exc(), language="python")
+            return
+
+    cache = st.session_state.get("prediction_cache")
+    if cache is None:
+        return
+
+    result = cache["result"]
+    preprocess_info = cache["preprocess_info"]
+    want_stt = cache.get("want_stt", False)
+
+    st.markdown(
+        """
+        <div class="section-card">
+            <div class="section-step">Langkah 3</div>
+            <div class="section-title">Hasil Prediksi</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    summary = summarize_prediction(result)
+    render_result_card(summary)
+
+    if preprocess_info["trimmed"]:
+        st.warning(
+            f"Audio dipotong menjadi maksimal {preprocess_info['max_duration_sec']} detik "
+            f"untuk analisis emosi (durasi asli: {preprocess_info['original_duration_sec']} dtk). "
+            "Transkrip tetap memakai audio penuh."
+        )
+
+    if want_stt:
+        if "transcript" not in cache:
+            with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
+                audio_file.seek(0)
+                transcript, stt_ok = safe_transcribe(
+                    audio_file,
+                    WHISPER_MODEL,
+                    device_name,
+                    WHISPER_LANGUAGE,
+                    pipeline_loader=load_whisper_lazy,
+                )
+                cache["transcript"] = transcript
+                cache["stt_ok"] = stt_ok
+                gc.collect()
+        render_transcript_card(cache["transcript"])
+        if not cache.get("stt_ok", True):
+            st.caption(
+                "Catatan: transkripsi Whisper tidak tersedia sementara. "
+                "Analisis emosi tetap berjalan normal."
+            )
+
+    st.markdown("#### Top 3 Emosi")
+    render_top3_cards(result["probabilities_df"])
+
+    st.markdown("#### Confidence Semua Kelas")
+    render_probability_bars(result["probabilities_df"], highlight=result["predicted_label"])
+
+    render_export_buttons(result, cache.get("transcript"), display_name)
+
+    with st.expander("Detail Teknis"):
+        st.markdown("**Probabilitas Semua Kelas**")
+        display_df = result["probabilities_df"][["Emosi", "Persentase (%)"]].copy()
+        display_df["Persentase (%)"] = display_df["Persentase (%)"].map(lambda x: f"{x:.2f}%")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        st.markdown("**Mapping Label**")
+        mapping_df = pd.DataFrame(
+            [{"ID": idx, "Label": label} for label, idx in sorted(LABEL2ID.items(), key=lambda x: x[1])]
+        )
+        st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+
+        st.markdown("**Raw Logits**")
+        logits_df = pd.DataFrame(
+            {
+                "Emosi": [ID2LABEL[i] for i in range(len(result["logits"]))],
+                "Logit": result["logits"],
+            }
+        )
+        st.dataframe(logits_df, use_container_width=True, hide_index=True)
+
+        st.markdown("**Probabilitas (Raw)**")
+        prob_raw_df = pd.DataFrame(
+            {
+                "Emosi": [ID2LABEL[i] for i in range(len(result["probabilities"]))],
+                "Probabilitas": result["probabilities"],
+            }
+        )
+        st.dataframe(prob_raw_df, use_container_width=True, hide_index=True)
+
+        st.markdown("**Path Model**")
+        st.code(MODEL_DISPLAY_PATH, language=None)
+
+
+main()

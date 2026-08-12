@@ -60,6 +60,23 @@ def render_sidebar(device_name: str) -> None:
         if not model_ready and model_error:
             st.error(model_error)
 
+        history = st.session_state.get("prediction_history", [])
+        if history:
+            items = "".join(
+                f'<div class="sidebar-history-item">'
+                f'<span class="sidebar-history-emoji">{EMOTION_ICONS.get(entry["label"], "🎭")}</span>'
+                f'<div class="sidebar-history-body">'
+                f'<div class="sidebar-history-label">{entry["label"]} · {entry["confidence"] * 100:.0f}%</div>'
+                f'<div class="sidebar-history-meta">{entry["time"]} · {entry["filename"]}</div>'
+                f"</div></div>"
+                for entry in history
+            )
+            st.markdown(
+                f'<div class="sidebar-section-label">Riwayat Sesi</div>'
+                f'<div class="sidebar-history-list">{items}</div>',
+                unsafe_allow_html=True,
+            )
+
         with st.expander("⚙️ Detail Teknis"):
             st.caption(f"Backbone: {SER_BACKBONE}")
             st.caption("Mode: inferensi saja (bukan training)")
