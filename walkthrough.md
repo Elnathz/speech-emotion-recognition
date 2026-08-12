@@ -1,5 +1,39 @@
 # Walkthrough
 
+## [2026-08-13] Fix Waveform Chart Tidak Muncul + Verifikasi Visual dengan Playwright
+
+### Konteks
+User melaporkan grafik "Bentuk Gelombang" di sidebar Analisis tidak muncul, dan mengizinkan menambahkan browser headless ke environment kerja kalau memang dibutuhkan untuk verifikasi visual (redesign IA sebelumnya sempat menandai ini sebagai item yang tidak bisa diverifikasi karena tidak ada browser).
+
+### Root Cause
+Bukan bug logic Python maupun CSS proyek ini. Ditemukan lewat investigasi bertahap dengan Playwright (screenshot + inspeksi SVG langsung, dibandingkan di app bare tanpa CSS proyek sama sekali untuk isolasi):
+- `utils.get_waveform_envelope()` sehat (data non-empty, rentang nilai wajar) — bukan di situ masalahnya.
+- `st.line_chart(envelope_df, height=100, color=[...])` di `components/ui.py::render_waveform_chart` adalah akar masalahnya: pada Streamlit 1.61.1, memberi parameter `height` eksplisit yang kecil membuat area plot vertikal kolaps karena "chrome" (axis + legend) menghabiskan hampir seluruh tinggi yang dialokasikan. Dibuktikan dengan mengukur langsung koordinat Y pada SVG yang dirender: `height=100` -> rentang Y garis = 0px (benar-benar rata/tidak kelihatan), `height=140` (nilai SEBELUM redesign sesi ini) -> cuma ~11px dari 140px (nyaris tidak kelihatan juga), `height=220` -> ~36px rentang Y (jelas kelihatan), default (tanpa `height`) -> ~76px dari 350px.
+- Bug ini sudah ada SEBELUM sesi redesign kemarin (height lama 140 sudah di ambang batas nyaris-tidak-kelihatan) — perubahan sesi kemarin (140 -> 100) mengubahnya dari "nyaris tidak kelihatan" jadi "benar-benar hilang".
+
+### Perbaikan
+- `components/ui.py::render_waveform_chart`: `height` dinaikkan dari `100` ke `220`, dengan komentar `ponytail:` menjelaskan kenapa nilai kecil tidak aman dan titik amannya di mana.
+
+### Tooling Ditambahkan
+- Playwright (`pip install playwright` + `playwright install chromium`) dipasang di `.venv` lokal, **bukan** di `requirements.txt` — murni alat verifikasi visual untuk sesi kerja, bukan dependency runtime aplikasi (lihat AGENTS.md 4.1, Inference Only Scope).
+- Chromium butuh library sistem (`libnspr4.so` dkk.) yang tidak ada di Arch Linux secara default. `playwright install-deps` bawaan cuma support Debian/Ubuntu/Fedora (pakai `apt-get`, tidak ada di Arch). User menginstal manual lewat `pacman -S nss nspr at-spi2-core libcups libdrm mesa libxkbcommon libxcomposite libxdamage libxfixes libxrandr gtk3 pango cairo alsa-lib` di terminal asli mereka (sesi ini tidak punya TTY interaktif untuk prompt password `sudo`).
+
+### Verifikasi
+- Alur penuh diuji lewat Playwright: upload file audio sungguhan (file WAV sintetis dengan amplitude bervariasi, bukan nada murni konstan yang ternyata kasus degenerate) ke `st.file_uploader` di sidebar (Playwright bisa simulasikan upload file browser sungguhan, beda dengan `AppTest` yang tidak bisa), klik "Analisis Emosi", tunggu hasil.
+- Konfirmasi visual: waveform (garis Puncak putih + Lembah abu-abu) tampil jelas di sidebar setelah perbaikan; screenshot sebelum vs sesudah dibandingkan langsung.
+- Konfirmasi hasil analisis lengkap tampil di konten utama: result card, transkrip, Top 3 Emosi, confidence bars, tombol export, expander Detail Teknis — menutup item verifikasi "alur upload sampai hasil belum diverifikasi end-to-end" dari redesign sebelumnya.
+- Sekalian ditutup: navbar top (grup Beranda/Analisis/Insight, termasuk dropdown "Analisis" yang perlu diklik dulu untuk membuka) dan layout halaman Home terkonfirmasi tampil benar lewat screenshot — item yang sebelumnya juga ditandai belum diverifikasi.
+- Sempat salah duga ada bug kedua ("hasil analisis tidak muncul, tetap menampilkan empty-state walau audio sudah di-upload") — ternyata false alarm dari metodologi tes sendiri: `render_empty_state()` dipanggil dari 2 tempat berbeda dengan pesan yang SAMA (belum ada audio sama sekali, vs audio ada tapi belum di-klik Analisis), dan skenario tes awal memang belum pernah klik tombol "Analisis Emosi". Dikonfirmasi lewat debug print sementara di server (dihapus lagi setelah terbukti) yang menunjukkan `audio_file` sudah terisi benar di run yang bersangkutan. Dicatat sebagai potensi perbaikan copy kecil di masa depan (bedakan pesan "belum ada audio" vs "audio siap, klik Analisis Emosi"), bukan bug.
+- `python -m py_compile` dan `streamlit.testing.v1.AppTest` (kelima halaman) dijalankan ulang setelah semua perubahan -> bersih, tanpa exception.
+
+### Yang Tidak Diubah
+- Tidak ada perubahan pada logic inferensi/model.
+- `requirements.txt` tidak disentuh (Playwright sengaja tidak jadi dependency project).
+
+### Follow-up yang Disarankan
+- Pertimbangkan pesan empty-state yang berbeda untuk "belum ada audio" vs "audio sudah dipilih, klik Analisis Emosi di sidebar" supaya tidak membingungkan (ditemukan saat verifikasi sesi ini, bukan diminta user).
+- Kalau ke depan mau QA visual jadi bagian rutin (bukan cuma ad-hoc), pertimbangkan skrip Playwright permanen di repo (di luar scope sesi ini per instruksi user).
+
 ## [2026-08-13] Redesign UI Streamlit: Konsolidasi Token CSS & Komponen Section Header
 
 ### Konteks

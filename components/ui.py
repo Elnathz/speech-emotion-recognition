@@ -139,7 +139,11 @@ def render_waveform_chart(envelope_df: pd.DataFrame) -> None:
     if envelope_df.empty:
         return
     st.markdown('<div class="meta-label" style="margin-top:0.75rem;">Bentuk Gelombang</div>', unsafe_allow_html=True)
-    st.line_chart(envelope_df, height=140, color=["#fafafa", "#737373"])
+    # ponytail: st.line_chart dengan height kecil (dicoba 100/140) membuat area plot
+    # kolaps ke 0px (chrome legenda+axis menghabiskan seluruh tinggi) -- terverifikasi
+    # lewat Playwright, bukan cuma di sidebar. 220 adalah titik aman terkecil yang
+    # masih menyisakan area plot terlihat; naikkan lagi kalau butuh chart lebih pendek.
+    st.line_chart(envelope_df, height=220, color=["#fafafa", "#737373"])
 
 
 def render_top3_cards(prob_df: pd.DataFrame) -> None:
