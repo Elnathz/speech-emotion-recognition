@@ -230,6 +230,32 @@ def transcribe_audio(asr_pipeline: Any, waveform: "np.ndarray", language: str = 
     return str(output.get("text", "")).strip()
 
 
+def transcribe_audio_segments(
+    asr_pipeline: Any, waveform: "np.ndarray", language: str = "indonesian"
+) -> tuple[str, list[dict[str, Any]]]:
+    """Transkrip audio + timestamp per-segmen (untuk analisis emosi per-segmen)."""
+    output = asr_pipeline(
+        {"raw": waveform, "sampling_rate": TARGET_SAMPLE_RATE},
+        generate_kwargs={"language": language, "task": "transcribe"},
+        chunk_length_s=30,
+        return_timestamps=True,
+    )
+    text = str(output.get("text", "")).strip()
+    segments = [
+        {"text": str(chunk["text"]).strip(), "start": float(chunk["timestamp"][0]), "end": float(chunk["timestamp"][1])}
+        for chunk in output.get("chunks", [])
+        if chunk.get("timestamp") and chunk["timestamp"][0] is not None and chunk["timestamp"][1] is not None
+    ]
+    return text, segments
+
+
+def slice_waveform(waveform: "np.ndarray", start: float, end: float) -> "np.ndarray":
+    """Potong waveform mono 16kHz berdasarkan rentang waktu (detik)."""
+    start_sample = max(0, int(start * TARGET_SAMPLE_RATE))
+    end_sample = min(len(waveform), int(end * TARGET_SAMPLE_RATE))
+    return waveform[start_sample:end_sample]
+
+
 STT_FALLBACK_MESSAGE = "Transkripsi sementara tidak tersedia. Silakan coba lagi nanti."
 
 _whisper_pipeline: Any | None = None
@@ -288,6 +314,29 @@ def safe_transcribe(
         return cleaned, True
     except Exception:
         return STT_FALLBACK_MESSAGE, False
+
+
+def safe_transcribe_segments(
+    file: io.BytesIO | str | Path,
+    model_name: str,
+    device_name: str,
+    language: str = "indonesian",
+    *,
+    pipeline_loader: Any | None = None,
+) -> tuple[str, list[dict[str, Any]], bool]:
+    """Transkrip + segmen waktu. Tidak pernah raise; mengembalikan (teks, segmen, sukses)."""
+    try:
+        if hasattr(file, "seek"):
+            file.seek(0)
+        waveform = get_transcription_waveform(file)
+        asr = get_whisper_pipeline(model_name, device_name, loader=pipeline_loader)
+        text, segments = transcribe_audio_segments(asr, waveform, language)
+        cleaned = text.strip()
+        if not cleaned:
+            return "Tidak ada ucapan yang terdeteksi.", [], True
+        return cleaned, segments, True
+    except Exception:
+        return STT_FALLBACK_MESSAGE, [], False
 
 
 def predict_emotion(

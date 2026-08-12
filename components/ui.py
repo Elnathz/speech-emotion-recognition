@@ -68,6 +68,42 @@ def render_transcript_card(text: str) -> None:
     )
 
 
+def _format_timestamp(seconds: float) -> str:
+    total = int(round(seconds))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def render_segment_timeline(segments: list[dict]) -> None:
+    """Timeline emosi per-segmen transkrip (opt-in, hasil dari run_segment_predictions)."""
+    st.markdown(
+        '<div class="section-card">'
+        '<div class="section-step">Per-Segmen</div>'
+        '<div class="section-title">Emosi Sepanjang Transkrip</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    for seg in segments:
+        label = seg["result"]["predicted_label"]
+        confidence = seg["result"]["confidence"] * 100
+        icon = EMOTION_ICONS.get(label, "🎭")
+        accent = EMOTION_COLORS.get(label, "#a3a3a3")
+        time_range = f"{_format_timestamp(seg['start'])}–{_format_timestamp(seg['end'])}"
+        text = seg["text"] or "(tanpa teks)"
+        st.markdown(
+            f"""
+            <div class="segment-card" style="--emotion-color:{accent};">
+                <div class="segment-time">{time_range}</div>
+                <div class="segment-text">"{text}"</div>
+                <div class="segment-emotion-row">
+                    <span>{icon} <span style="text-transform:capitalize;">{label}</span></span>
+                    <span>{confidence:.1f}%</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_hero() -> None:
     st.markdown(
         """
