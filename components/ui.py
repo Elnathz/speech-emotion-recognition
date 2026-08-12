@@ -119,20 +119,19 @@ def render_metadata_card(
     channels: int,
     file_size: str,
 ) -> None:
+    """Kartu metadata audio, ditata 2x2 karena dipanggil dari kolom sidebar yang sempit."""
     render_section_header("Metadata Audio")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="meta-label">Nama File</div><div class="meta-value">{filename}</div>', unsafe_allow_html=True)
-    with c2:
+    st.markdown(f'<div class="meta-label">Nama File</div><div class="meta-value">{filename}</div>', unsafe_allow_html=True)
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
         st.markdown(f'<div class="meta-label">Durasi</div><div class="meta-value">{duration_sec} dtk</div>', unsafe_allow_html=True)
-    with c3:
+    with r1c2:
         st.markdown(f'<div class="meta-label">Sample Rate</div><div class="meta-value">{sample_rate} Hz</div>', unsafe_allow_html=True)
-    with c4:
+    r2c1, r2c2 = st.columns(2)
+    with r2c1:
         st.markdown(f'<div class="meta-label">Channel</div><div class="meta-value">{channels}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="meta-label">Ukuran File</div><div class="meta-value">{file_size}</div>',
-        unsafe_allow_html=True,
-    )
+    with r2c2:
+        st.markdown(f'<div class="meta-label">Ukuran File</div><div class="meta-value">{file_size}</div>', unsafe_allow_html=True)
 
 
 def render_waveform_chart(envelope_df: pd.DataFrame) -> None:
@@ -144,6 +143,26 @@ def render_waveform_chart(envelope_df: pd.DataFrame) -> None:
     # lewat Playwright, bukan cuma di sidebar. 220 adalah titik aman terkecil yang
     # masih menyisakan area plot terlihat; naikkan lagi kalau butuh chart lebih pendek.
     st.line_chart(envelope_df, height=220, color=["#fafafa", "#737373"])
+
+
+def render_history_list(history: list[dict]) -> None:
+    """Daftar riwayat prediksi sesi berjalan (opt-in, hanya dirender kalau history tidak kosong)."""
+    if not history:
+        return
+    items = "".join(
+        f'<div class="sidebar-history-item">'
+        f'<span class="sidebar-history-emoji">{EMOTION_ICONS.get(entry["label"], "🎭")}</span>'
+        f'<div class="sidebar-history-body">'
+        f'<div class="sidebar-history-label">{html.escape(entry["label"])} · {entry["confidence"] * 100:.0f}%</div>'
+        f'<div class="sidebar-history-meta">{html.escape(entry["time"])} · {html.escape(entry["filename"])}</div>'
+        f"</div></div>"
+        for entry in history
+    )
+    st.markdown(
+        f'<div class="sidebar-section-label">Riwayat Sesi</div>'
+        f'<div class="sidebar-history-list">{items}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_top3_cards(prob_df: pd.DataFrame) -> None:

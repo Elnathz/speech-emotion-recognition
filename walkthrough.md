@@ -34,6 +34,45 @@ Bukan bug logic Python maupun CSS proyek ini. Ditemukan lewat investigasi bertah
 - Pertimbangkan pesan empty-state yang berbeda untuk "belum ada audio" vs "audio sudah dipilih, klik Analisis Emosi di sidebar" supaya tidak membingungkan (ditemukan saat verifikasi sesi ini, bukan diminta user).
 - Kalau ke depan mau QA visual jadi bagian rutin (bukan cuma ad-hoc), pertimbangkan skrip Playwright permanen di repo (di luar scope sesi ini per instruksi user).
 
+## [2026-08-13] Redesign IA: Navbar, Sidebar Analisa Suara, dan Halaman Home
+
+### Konteks
+Lanjutan redesign UI. Permintaan user kali ini soal struktur navigasi, bukan visual/CSS: (1) menu sidebar diubah jadi navbar atas, (2) sidebar dipakai ulang sebagai panel kontrol analisa suara, (3) sidebar itu cuma muncul di halaman Analisis, (4) hasil analisis ditampilkan detail di halaman Analisis, (5) info statis (judul project, peta emosi, stat model) pindah ke halaman Home baru, (6) Home jadi landing page default. Dikonfirmasi ke user: seluruh alur input audio (bukan cuma kontrol inti) pindah ke sidebar, dan Riwayat Sesi tetap di sidebar analisis (bukan ke Home).
+
+### Keputusan Desain
+- `st.navigation(pages, position="top")` (Streamlit 1.61.1 mendukung ini) menggantikan menu sidebar bawaan. `st.sidebar` tetap container biasa terlepas dari `position`, dan hanya render kalau ada yang ditulis ke situ pada page run tersebut — jadi syarat "sidebar cuma muncul di Analisis" otomatis terpenuhi dengan hanya memanggil `st.sidebar` di `pages/analisis.py`, tanpa perlu trik tambahan.
+- "Detail Teknis" (backbone/mode/checkpoint) dari sidebar lama didrop total, tidak dipindah ke Home — sudah jadi subset penuh dari expander "Konfigurasi Training" yang sudah ada di `pages/model.py`. Home cukup kasih `st.page_link` ke halaman Model.
+- `render_hero()` dihapus dari halaman Analisis (dipakai di Home sebagai pemilik narasi intro), diganti heading ringan lewat `render_section_header()` yang sudah ada.
+- Class CSS `sidebar-*` dipakai ulang apa adanya di halaman Home (tidak di-rename) — class tersebut cuma string CSS tanpa keterikatan ke container `st.sidebar` sungguhan, jadi aman dipakai di konten utama. Dibungkus `st.columns([1,2,1])` supaya tidak melebar penuh di layout wide.
+- `render_metadata_card` diubah dari 4 kolom sejajar jadi 2x2, karena sekarang cuma dipanggil dari kolom sidebar sempit (~336px) — 4 kolom akan bikin nilai seperti "16000 Hz" wrap parah.
+- Validasi desain (posisi navbar top, penempatan Detail Teknis, gotcha Streamlit) dilakukan lewat sub-agent Plan sebelum implementasi, bukan asumsi langsung.
+
+### File yang Diubah
+- `app.py`: tambah `st.Page("pages/home.py", ..., default=True)`, hapus `default=True` dari Analisis, `st.navigation(..., position="top")`, hapus import dan panggilan `render_sidebar` (sudah tidak ada).
+- `pages/home.py` (baru): landing page — hero, stat grid, status model, peta emosi (port dari `sidebar.py` lama), CTA `st.page_link` ke Analisis dan Model.
+- `components/sidebar.py`: dihapus. Konfirmasi lewat grep hanya diimpor dari `app.py`, tidak ada pemakai lain.
+- `components/ui.py`: tambah `render_history_list(history)` (ekstraksi dari `sidebar.py` lama, murni render tanpa baca `st.session_state`), `render_metadata_card` jadi 2x2, `render_waveform_chart` height 140 -> 100.
+- `pages/analisis.py`: restrukturisasi `main()` — alur input audio (pilih sumber, upload/rekam, metadata, preview, waveform, checkbox per-segmen, tombol Analisis Emosi/Analisis Ulang, riwayat sesi) dibungkus `with st.sidebar:`; blok jalankan prediksi dan seluruh hasil (result card, transkrip, segmen, top-3, confidence, export, detail teknis) tetap di konten utama. Kasus `audio_file is None` atau metadata gagal diproses: `render_empty_state()` dipindah ke KONTEN UTAMA (bukan sidebar), sesuai requirement.
+
+### Yang Tidak Diubah
+- Logic inferensi, preprocessing audio, arsitektur model (`utils.py::predict_emotion`, `model.py`, `services.py` tidak disentuh selain yang sudah ada).
+- `pages/dashboard.py`, `pages/model.py`, `pages/dataset.py` — tidak ada perubahan kode, hanya terdampak otomatis oleh `position="top"` di level navigasi.
+- Skema warna monokrom dan token CSS dari redesign sebelumnya.
+
+### Verifikasi
+- `python -m py_compile` untuk seluruh file yang diubah/dibuat plus `utils.py`, `services.py`, `config.py`, `model.py` -> tanpa error sintaks.
+- `streamlit.testing.v1.AppTest` lewat `app.py` (mensimulasikan `st.navigation` asli) untuk kelima halaman (Home, Analisis, Dashboard, Model, Dataset) -> tanpa exception. Dicek juga jumlah elemen di `at.sidebar`: 0 di Home/Dashboard/Model/Dataset, terisi (radio + section header) di Analisis — mengonfirmasi sidebar memang cuma render saat halaman Analisis dibuka.
+- Server Streamlit sungguhan dijalankan lokal (`.venv/bin/streamlit run app.py`), endpoint `/_stcore/health` mengembalikan `ok`, root page mengembalikan HTTP 200 — start-up bersih tanpa error dengan struktur navigasi baru.
+- grep memastikan tidak ada referensi tersisa ke `components.sidebar`/`render_sidebar` yang sudah dihapus, dan `render_hero` cuma dipakai di `pages/home.py`.
+
+### Yang Belum Diverifikasi
+- Tampilan visual navbar grup ("Beranda"/"Analisis"/"Insight") dalam mode `position="top"` di browser sungguhan — environment kerja ini tidak punya headless browser/Playwright. `AppTest` mengonfirmasi tidak ada exception saat build navigasi, tapi tidak memvalidasi rendering visual dropdown grup.
+- Alur upload file audio sungguhan lewat `st.file_uploader`/`st.audio_input` di dalam sidebar sempit sampai ke hasil prediksi penuh — `AppTest` tidak mendukung simulasi interaksi `file_uploader` dengan bytes nyata, jadi jalur ini hanya diverifikasi lewat pembacaan kode (logic dipindah tanpa diubah dari versi yang sudah terbukti jalan sebelumnya), bukan dijalankan end-to-end otomatis.
+- Proporsi visual grid Peta Emosi/stat card saat dipindah dari kolom sidebar sempit ke halaman Home yang lebar (dibungkus `st.columns([1,2,1])`, tapi belum dicek visual).
+
+### Follow-up yang Disarankan
+- Uji manual di browser: cek navbar top, sidebar hanya muncul di Analisis, upload/rekam audio sampai hasil, dan tata letak Home di layar desktop maupun mobile (proyek ini mensyaratkan mobile-first per AGENTS.md 3.2, dan struktur navigasi top-nav + sidebar kontekstual ini belum pernah diuji di breakpoint kecil).
+
 ## [2026-08-13] Redesign UI Streamlit: Konsolidasi Token CSS & Komponen Section Header
 
 ### Konteks
