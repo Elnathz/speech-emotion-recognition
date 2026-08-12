@@ -501,6 +501,18 @@ def inject_custom_css() -> None:
         }
         .status-ok { color: var(--text-primary); font-weight: 650; }
         .status-fail { color: #f87171; font-weight: 650; }
+        a[data-testid="stTopNavLink"] span[label] {
+            display: none;
+        }
+        a[data-testid="stTopNavLink"] {
+            padding: 0.5rem 0.9rem;
+        }
+        span[data-testid="stIconMaterial"] {
+            color: var(--text-tertiary) !important;
+        }
+        a[data-testid="stTopNavLink"][aria-current="page"] span[data-testid="stIconMaterial"] {
+            color: var(--text-primary) !important;
+        }
         div[data-testid="stSidebar"] {
             background: linear-gradient(180deg, rgba(5,5,5,0.98), rgba(0,0,0,0.92));
         }

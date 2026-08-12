@@ -1,5 +1,31 @@
 # Walkthrough
 
+## [2026-08-13] Navbar: Menu Individual Icon-Only dengan Material Symbols
+
+### Konteks
+User minta 4 perubahan pada navbar top hasil redesign sebelumnya: (1) hapus dropdown grup jadi item individual, (2) menu icon-only (teks disembunyikan), (3) icon elegan/simple yang selaras warna background monokrom (ganti dari emoji berwarna), (4) urutan Home, Analisa Suara, Dashboard, Model, Dataset.
+
+### Riset & Keputusan Desain
+- `st.navigation()` menerima `pages` sebagai list datar (bukan dict berkelompok) — dengan `position="top"`, list datar menghasilkan item individual tanpa dropdown sama sekali. Dikonfirmasi lewat Playwright sebelum implementasi (bukan asumsi dari dokumentasi saja).
+- Streamlit 1.61.1 mendukung Material Symbols lewat `icon=":material/nama:"` (dikonfirmasi ada di `material_icon_names.py` paket terpasang). Icon ini SVG/font yang otomatis ikut warna teks CSS, jadi selaras tema monokrom tanpa aset baru: `home` (Home), `mic` (Analisis Emosi), `dashboard` (Dashboard), `psychology` (Model, ikon otak), `dataset` (Dataset).
+- Teks label tiap item nav ada di `span[label]` terpisah dari `span[data-testid="stIconMaterial"]` (dicek lewat inspeksi DOM sungguhan) — bisa disembunyikan spesifik lewat CSS tanpa menyentuh icon-nya. `title=` di `st.Page()` tetap diisi (dipakai Streamlit sebagai identitas halaman), cuma disembunyikan visual.
+
+### Perubahan
+- `app.py`: `pages` diubah dari dict berkelompok jadi list datar 5 halaman, urutan Home/Analisis/Dashboard/Model/Dataset, semua icon jadi `:material/...:`.
+- `components/css.py`: tambah rule `a[data-testid="stTopNavLink"] span[label] { display: none; }` untuk sembunyikan teks, styling warna icon pakai token yang sudah ada (`--text-tertiary` untuk item biasa, `--text-primary` untuk halaman aktif via `[aria-current="page"]`).
+
+### Verifikasi
+- `python -m py_compile` dan `streamlit.testing.v1.AppTest` (kelima halaman) -> bersih, tanpa exception.
+- Playwright terhadap app sungguhan: 5 item nav individual terkonfirmasi (0 elemen dropdown), urutan icon terbaca `['home', 'mic', 'dashboard', 'psychology', 'dataset']` sesuai permintaan, klik tiap icon berhasil navigasi ke halaman yang benar, state aktif (icon putih di atas pill terang) beda dari state biasa (abu-abu).
+- Sempat curiga ada bug render (icon "mic" terlihat seperti ikon panah-turun/tray di screenshot resolusi biasa) — ternyata cuma keterbatasan resolusi screenshot; di-crop & di-zoom pada `device_scale_factor=3` terkonfirmasi itu memang ikon mikrofon yang benar, bukan bug.
+
+### Yang Tidak Diubah
+- Emoji fungsional lain di aplikasi (`EMOTION_ICONS` di `config.py`, icon di kartu hasil analisis) — bukan bagian dari navigasi, di luar permintaan.
+- Tidak ada tooltip/aria-label pengganti teks yang disembunyikan (di luar permintaan; Streamlit tidak menyediakan cara menambah atribut HTML kustom tanpa komponen custom).
+
+### Follow-up yang Disarankan
+- Cek tampilan navbar icon-only ini di breakpoint mobile/layar kecil (belum diuji viewport sempit di sesi ini, sementara AGENTS.md mensyaratkan mobile-first).
+
 ## [2026-08-13] Fix Waveform Chart Tidak Muncul + Verifikasi Visual dengan Playwright
 
 ### Konteks
