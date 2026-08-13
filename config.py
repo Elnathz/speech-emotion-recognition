@@ -15,6 +15,10 @@ WHISPER_LANGUAGE = "indonesian"
 # Cloud gratis ~1 GB RAM — aman untuk 1 prediksi per sesi, refresh (F5) untuk file baru
 MAX_CLOUD_PREDICTIONS = 1
 
+# Aturan UX rekam mikrofon langsung (bukan bagian kontrak preprocessing model —
+# lihat utils.MIN_DURATION_SECONDS/MAX_DURATION_SECONDS untuk itu)
+MIN_RECORD_DURATION_SECONDS = 0.4
+
 EMOTION_ICONS = {
     "netral": "😐",
     "senang": "😊",

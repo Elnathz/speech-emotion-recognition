@@ -1,5 +1,72 @@
 # Walkthrough
 
+## [2026-08-13] Fix Bug Kritis: Iframe Recorder Membengkak Tanpa Henti
+
+### Konteks
+User tes manual fitur rekam (sesi sebelumnya) dan lapor: tidak ada preview hasil rekam, tidak ada tombol "Analisis Emosi", cuma tombol "Rekam" yang tersisa. Sesi sebelumnya sempat melihat gejala serupa lewat Playwright tapi keliru menyimpulkannya sebagai flakiness alat tes — ternyata bug nyata di komponen custom recorder.
+
+### Root Cause (dikonfirmasi lewat pengukuran langsung, bukan tebakan)
+1. Verifikasi protokol `components/recorder_frontend/index.html` terhadap source JS asli Streamlit (`ComponentInstance.*.js` di paket terpasang) -> implementasi `componentReady`/`setComponentValue`/`setFrameHeight` sudah 100% sesuai spec.
+2. Diukur langsung atribut `height` elemen `<iframe>` komponen selama beberapa detik: **tumbuh tanpa henti**, ~2.756px -> 63.196px dalam 4.5 detik (~7000px per 0.5 detik).
+3. Direproduksi & dikonfirmasi dalam isolasi: menghapus SATU baris `setFrameHeight()` yang dipanggil di dalam listener `"streamlit:render"` (event yang Streamlit kirim ke SETIAP komponen pada SETIAP rerun script) membuat tinggi iframe stabil sempurna.
+
+**Mekanisme**: Streamlit mengirim `"streamlit:render"` ke komponen pada tiap rerun untuk sinkronisasi args/tema (perilaku normal). Kode lama memanggil `setFrameHeight()` di situ, dan melaporkan tinggi frame ke Streamlit rupanya memicu Streamlit merender ulang lagi -> loop umpan balik tak berujung, membengkak tiap siklus. Begitu iframe setinggi puluhan ribu piksel, seluruh layout sidebar rusak — persis gejala yang dilaporkan user, dan penyebab flakiness Playwright yang sempat salah didiagnosis sebagai masalah alat tes di sesi sebelumnya.
+
+### Perbaikan
+- `components/recorder_frontend/index.html`: hapus panggilan `setFrameHeight()` dari listener `"streamlit:render"` (komentar `ponytail:` ditambahkan menjelaskan kenapa).
+- **Efek samping yang perlu diperbaiki juga**: setelah baris itu dihapus, ternyata satu-satunya pengukuran tinggi awal (di `window.load`) terjadi TERLALU DINI (sebelum browser selesai melukis tombol), jadi `scrollHeight` terukur 0 dan tombol jadi kepotong/nyaris tak terlihat (tinggi iframe cuma 4px). Diperbaiki dengan menunggu `requestAnimationFrame` ganda sebelum panggilan `setFrameHeight()` pertama, supaya browser sudah selesai melukis dulu.
+
+### Verifikasi
+- Pengukuran tinggi iframe berulang selama 4.5 detik setelah pindah ke mode "Rekam Mikrofon" (sebelum klik rekam) -> stabil di 72px, tidak tumbuh (sebelumnya tumbuh tanpa henti).
+- Screenshot mengonfirmasi tombol "🎙️ Rekam" tampil utuh dan proporsional, bukan kepotong.
+- Playwright pada app sungguhan, diulang beberapa kali independen (browser baru tiap kali, meniru sesi user sungguhan): rekam -> auto-stop di 4 detik -> metadata, waveform, tombol "Analisis Emosi" muncul KONSISTEN (sebelumnya cuma kadang berhasil) -> klik "Analisis Emosi" -> hasil analisis lengkap tampil (mis. "Senang" 81.2%, 77.0% pada run berbeda).
+- Path durasi minimum diuji ulang pada app sungguhan (bukan cuma prototipe standalone seperti sesi sebelumnya): rekam lalu stop manual di ~0.18 detik -> pesan "Rekaman terlalu pendek (0.18 dtk). Minimal 0.4 detik — silakan ulangi rekam." muncul dengan benar, konten utama tetap di empty-state (tidak lanjut ke metadata).
+- Frame-detection Playwright yang sebelumnya sering gagal (20+ detik timeout) sekarang berhasil ditemukan segera pada mayoritas run setelah fix — mengonfirmasi bug height inilah akar penyebab flakiness yang sempat salah didiagnosis di sesi sebelumnya, bukan keterbatasan alat tes.
+
+### Yang Tidak Diubah
+- Logic auto-stop, validasi durasi minimum, encode WAV di sisi browser — semua sudah terbukti benar secara independen dari bug ini, tidak disentuh.
+- `components/recorder.py`, `config.py`, `pages/analisis.py` — tidak ada perubahan.
+
+### Pelajaran untuk Sesi Berikutnya
+- Kalau menulis custom Streamlit component dengan protokol postMessage manual: **jangan pernah panggil `setFrameHeight()` di dalam listener `"streamlit:render"`** — itu event yang dikirim berulang pada tiap rerun, bukan event satu kali. Hanya panggil saat konten benar-benar berubah ukurannya (load awal, mulai/selesai aksi user), dan untuk pengukuran pertama, tunggu render browser selesai dulu (`requestAnimationFrame`) supaya tidak salah ukur 0.
+
+## [2026-08-13] Custom Mic Recorder: Auto-Stop 4 Detik + Minimum 0.4 Detik
+
+### Konteks
+User minta aturan baru untuk rekam suara langsung di halaman Analisis: rekaman otomatis berhenti begitu mencapai 4 detik, dan durasi di bawah 0.4 detik harus mengulang rekam. `st.audio_input` (widget rekam bawaan Streamlit sebelumnya) murni dikontrol browser, tidak ada API Python untuk auto-stop. Dikonfirmasi ke user: mereka pilih "auto-stop asli di browser" meski disclose butuh effort lebih besar & kemungkinan dependency baru.
+
+### Riset Dependency (sebelum membangun apa pun)
+- `sound-streamlit` (py `AudioWidget`, ada param `min_duration`/`max_duration`) — didiskualifikasi: rilis terakhir Des 2023, repo GitHub 404, dan `requires_dist` mem-pin `streamlit==1.29.0` persis — akan bentrok dan berpotensi merusak Streamlit 1.61.1 yang dipakai project ini (navbar `position="top"`, Material Symbols, dll butuh versi lebih baru).
+- `streamlit-mic-recorder` — dependency aman (`streamlit>=0.63`), tapi tidak ada parameter durasi maksimum sama sekali (dicek dari README & source GitHub langsung).
+- Tidak ada package siap pakai yang aman + mendukung fitur ini.
+
+### Solusi: Custom Component "No-Build"
+`st.components.v1.declare_component` menunjuk ke `components/recorder_frontend/index.html` statis (HTML+JS biasa, TANPA React/npm/webpack) yang mengimplementasikan protokol `postMessage` Streamlit secara manual (`streamlit:componentReady`, `streamlit:setComponentValue`, `streamlit:setFrameHeight`). **Nol dependency Python/pip/sistem baru.**
+
+**Masalah kritis yang ditemukan saat prototyping, dan cara mengatasinya**: `MediaRecorder` browser cuma bisa menghasilkan WebM/Opus, tidak bisa WAV langsung. Dites langsung: pipeline `utils.py::load_audio` (torchaudio → librosa → soundfile) gagal total membaca WebM di environment ini (tidak ada `ffmpeg`, `torchaudio` versi terpasang butuh `torchcodec` yang juga tidak ada). Solusi: decode + re-encode ke WAV asli 100% di sisi BROWSER pakai Web Audio API (`AudioContext.decodeAudioData` + penulisan header WAV manual di JS) sebelum dikirim ke Python — jadi Python selalu terima WAV asli, `utils.py` tidak perlu diubah sama sekali. Dites langsung: WAV hasil browser berhasil diproses oleh `utils.load_audio()`/`get_audio_info()` yang sudah ada, tanpa modifikasi.
+
+### Perubahan
+- `components/recorder_frontend/index.html` (baru): tombol rekam bergaya monokrom (warna disamakan manual dengan token project karena iframe terisolasi dari CSS utama), counter durasi berjalan + progress bar saat merekam, auto-stop via `setTimeout` di durasi maksimum (dikirim dari Python lewat `args`, bukan hardcode), penolakan durasi minimum, decode+encode WAV di `onstop`.
+- `components/recorder.py` (baru): `record_audio(max_seconds, min_seconds, key)` — wrapper tipis yang decode base64 jadi `io.BytesIO` dengan `.name`/`.size` di-set manual, kompatibel penuh dengan interface yang sudah dipakai `pages/analisis.py` untuk `audio_file` (sama seperti `UploadedFile` dari `st.file_uploader`/`st.audio_input` sebelumnya) — jadi TIDAK perlu ubah `_audio_key`, `get_audio_info`, atau pipeline prediksi.
+- `config.py`: tambah `MIN_RECORD_DURATION_SECONDS = 0.4`, sengaja terpisah dari `utils.MIN_DURATION_SECONDS` (0.35, constant preprocessing MODEL, bagian kontrak TDD v7 — tidak boleh diutak-atik tanpa proses AGENTS.md). Constant baru ini murni aturan UX rekam. Durasi maksimum reuse `utils.MAX_DURATION_SECONDS` (4.0) langsung, tidak duplikasi angka.
+- `pages/analisis.py`: ganti pemanggilan `st.audio_input(...)` dengan `record_audio(max_seconds=MAX_DURATION_SECONDS, min_seconds=MIN_RECORD_DURATION_SECONDS, key="recorded_audio")`, tambah caption penjelasan aturan durasi.
+
+### Verifikasi
+- `python -m py_compile` untuk semua file baru/diubah -> bersih.
+- `streamlit.testing.v1.AppTest` untuk kelima halaman termasuk Analisis dalam mode "Rekam Mikrofon" (custom component ter-render) -> tanpa exception.
+- **Prototipe standalone** (sebelum integrasi, di luar project): dites lewat Playwright dengan Chromium sungguhan + fake mic device (`--use-fake-device-for-media-stream`) — auto-stop tepat di 4000ms terkonfirmasi by measurement, rekaman di bawah 400ms terkonfirmasi ditolak (`{error: "too_short", duration_ms: 164}`), WAV hasil decode berhasil diproses `utils.load_audio()` project tanpa modifikasi.
+- **App sungguhan (setelah integrasi)**: dites lewat Playwright pada server lokal — klik rekam, tunggu lewat 4 detik tanpa stop manual -> rekaman berhenti sendiri, metadata + waveform + tombol muncul di sidebar, klik "Analisis Emosi" -> hasil analisis lengkap tampil di konten utama (emosi "Senang" 75.2%, transkrip STT berjalan) — audio dari mikrofon browser sungguhan berhasil diproses model end-to-end.
+- Sempat menemukan flakiness murni di tooling tes (Playwright frame-detection kadang lambat mendeteksi iframe component, dan `page.screenshot()` beberapa kali menangkap frame basi/stale dibanding DOM sungguhan) — dikonfirmasi lewat `.inner_text()` (query DOM langsung, bukan screenshot visual) dan print debug server-side bahwa data SELALU benar di baliknya; ini keterbatasan alat verifikasi di environment sandbox ini, bukan bug aplikasi.
+
+### Yang Tidak Diubah
+- `utils.py` (pipeline decode/preprocess) — tidak disentuh sama sekali.
+- `requirements.txt` — tidak ada dependency baru.
+- Alur upload file (`st.file_uploader`) — cuma jalur rekam mikrofon yang berubah.
+
+### Follow-up yang Disarankan
+- Verifikasi durasi minimum (0.4 detik) di real app belum sempat direkam-ulang lewat Playwright karena flakiness tooling (sudah kuat divalidasi di prototipe standalone dengan kode identik) — kalau ingin extra yakin, coba manual di browser sungguhan.
+- Kalau ke depan tombol rekam custom ini butuh polish visual lebih jauh (mis. animasi, ikon berbeda saat idle/recording), style-nya ada di `components/recorder_frontend/index.html`, terpisah dari `components/css.py` karena keterbatasan isolasi iframe.
+
 ## [2026-08-13] Rombak Dashboard: Dari Ringkasan Statis Jadi Status Operasional
 
 ### Konteks

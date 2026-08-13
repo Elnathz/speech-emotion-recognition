@@ -18,6 +18,7 @@ from config import (
     WHISPER_MODEL,
     WHISPER_LANGUAGE,
     MAX_CLOUD_PREDICTIONS,
+    MIN_RECORD_DURATION_SECONDS,
     MODEL_DISPLAY_PATH,
 )
 from services import (
@@ -29,6 +30,7 @@ from services import (
 from utils import (
     ID2LABEL,
     LABEL2ID,
+    MAX_DURATION_SECONDS,
     get_audio_info,
     get_transcription_waveform,
     get_waveform_envelope,
@@ -37,6 +39,7 @@ from utils import (
     summarize_prediction,
 )
 
+from components.recorder import record_audio
 from components.ui import (
     render_empty_state,
     render_metadata_card,
@@ -122,13 +125,16 @@ def main() -> None:
             )
             source_label = "upload"
         else:
-            audio_file = st.audio_input(
-                "Rekam suara",
+            st.caption(
+                f"Rekaman otomatis berhenti di {MAX_DURATION_SECONDS:.0f} detik. "
+                f"Minimal {MIN_RECORD_DURATION_SECONDS:.1f} detik."
+            )
+            audio_file = record_audio(
+                max_seconds=MAX_DURATION_SECONDS,
+                min_seconds=MIN_RECORD_DURATION_SECONDS,
                 key="recorded_audio",
             )
             source_label = "record"
-            if audio_file is not None and not getattr(audio_file, "name", None):
-                audio_file.name = "rekaman-mikrofon.wav"
 
         if audio_file is None:
             _reset_cloud_session()
