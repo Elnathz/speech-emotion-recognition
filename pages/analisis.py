@@ -226,6 +226,7 @@ def main() -> None:
                 st.session_state["cloud_prediction_count"] = (
                     st.session_state.get("cloud_prediction_count", 0) + 1
                 )
+            st.session_state["session_analysis_count"] = st.session_state.get("session_analysis_count", 0) + 1
             history = st.session_state.setdefault("prediction_history", [])
             history.insert(
                 0,

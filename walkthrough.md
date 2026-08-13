@@ -1,5 +1,32 @@
 # Walkthrough
 
+## [2026-08-13] Rombak Dashboard: Dari Ringkasan Statis Jadi Status Operasional
+
+### Konteks
+User menilai `pages/dashboard.py` (distribusi dataset + kurva training/confusion matrix) redundant dengan `pages/dataset.py` dan `pages/model.py` yang sudah punya versi lengkapnya. Minta Dashboard diubah jadi halaman yang menunjukkan "kehidupan" aplikasi: status sistem, aktivitas analisis terbaru, dsb.
+
+Dikonfirmasi ke user keterbatasan teknis: Streamlit tidak punya database, `st.session_state` murni per-sesi/per-tab (tidak dibagi antar pengguna). User memilih opsi ringan: "Aktivitas" cukup dari sesi berjalan saat ini (reuse `st.session_state["prediction_history"]` yang sudah dipakai sidebar Analisis), ditampilkan jujur sebagai "Aktivitas Sesi Ini" — bukan klaim aktivitas semua pengguna. Tidak menambah infrastruktur penyimpanan baru (sesuai juga dengan "Inference Only Scope" di AGENTS.md).
+
+### Perubahan
+- `pages/analisis.py`: tambah satu baris counter `st.session_state["session_analysis_count"]` di titik yang sama dengan `history.insert(...)`. Perlu karena `prediction_history` dibatasi 10 entri (`del history[10:]`), jadi tidak bisa dipakai untuk angka "Total Analisis Sesi Ini" yang akurat kalau user analisis >10 kali dalam satu sesi.
+- `pages/dashboard.py`: rombak total. Dihapus: grafik distribusi dataset, gambar kurva training/confusion matrix, expander konfigurasi model (semua sudah ada di halaman Dataset/Model). Diganti:
+  - **Status Sistem**: strip operasional ringkas (Model Siap/Gagal via `check_model_ready`, Perangkat CPU/GPU, plus kuota cloud sesi ini kalau `IS_CLOUD`) — sengaja dibuat lebih ringkas dari stat-grid Home supaya tidak terasa pengulangan, framing-nya "apakah sistem siap dipakai sekarang" bukan "tentang project".
+  - **Aktivitas Sesi Ini**: kalau kosong, `st.info` + `st.page_link` ke Analisis (bukan reuse `render_empty_state()` karena copy-nya spesifik soal upload audio, tidak pas untuk konteks "belum ada aktivitas"). Kalau ada: 2 `st.metric` (Total Analisis Sesi Ini, Emosi Terbanyak lewat `collections.Counter`) + tabel `st.dataframe` dari `prediction_history` (Waktu/File/Emosi/Confidence). Pakai `st.dataframe` native, bukan reuse `render_history_list` dari `components/ui.py`, karena fungsi itu didesain khusus kolom sidebar sempit — tabel native lebih pas untuk konten utama yang lebar.
+  - Quick links ke Model/Dataset dipertahankan (masih navigasi berguna, bukan duplikasi konten), icon-nya disamakan ke Material Symbols mengikuti gaya navbar baru.
+
+### Verifikasi
+- `python -m py_compile` untuk `pages/dashboard.py` dan `pages/analisis.py` -> bersih.
+- `streamlit.testing.v1.AppTest` lewat `app.py` untuk kelima halaman -> tanpa exception, termasuk Dashboard versi kosong (session state kosong, seperti sesi baru).
+- Playwright pada app sungguhan: jalankan 1 analisis nyata di halaman Analisis, buka Dashboard -> Status Model "Siap", Perangkat "GPU (CUDA)" (device sungguhan di environment ini), Total Analisis Sesi Ini "1", Emosi Terbanyak sesuai hasil prediksi, tabel aktivitas menampilkan waktu/nama file/emosi/confidence yang benar. Dicek juga versi kosong di sesi baru (browser context terpisah) -> pesan "Belum ada analisis..." + tombol "Mulai analisis pertama →" tampil rapi, tidak blank.
+
+### Yang Tidak Diubah
+- `pages/dataset.py`, `pages/model.py`, `pages/home.py` — tidak disentuh.
+- Tidak ada penyimpanan/log persisten lintas sesi baru.
+- Logic inferensi/prediksi.
+
+### Follow-up yang Disarankan
+- Kalau nanti user mau "aktivitas" benar-benar lintas sesi/pengguna (bukan cuma sesi browser saat ini), perlu penyimpanan persisten (file log atau DB ringan) — sudah didiskusikan tapi sengaja tidak dikerjakan sesi ini karena filesystem Streamlit Cloud gratis bisa reset saat redeploy.
+
 ## [2026-08-13] Navbar: Menu Individual Icon-Only dengan Material Symbols
 
 ### Konteks
