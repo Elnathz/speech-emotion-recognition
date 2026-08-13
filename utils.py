@@ -192,6 +192,26 @@ def get_audio_info(file: io.BytesIO | str | Path) -> dict[str, Any]:
     }
 
 
+def get_waveform_envelope(file: io.BytesIO | str | Path, num_points: int = 400) -> pd.DataFrame:
+    """Downsample waveform ke envelope min/max per bucket untuk visualisasi ringan (tanpa matplotlib)."""
+    waveform, sample_rate = load_audio(file)
+    y = waveform.squeeze(0).numpy()
+    total_samples = len(y)
+    if total_samples == 0:
+        return pd.DataFrame({"Puncak": [], "Lembah": []})
+
+    bucket_size = max(1, total_samples // num_points)
+    peaks, troughs = [], []
+    for i in range(0, total_samples, bucket_size):
+        chunk = y[i : i + bucket_size]
+        peaks.append(float(chunk.max()))
+        troughs.append(float(chunk.min()))
+
+    duration = total_samples / sample_rate
+    time_axis = np.linspace(0, duration, len(peaks))
+    return pd.DataFrame({"Detik": time_axis, "Puncak": peaks, "Lembah": troughs}).set_index("Detik")
+
+
 def get_transcription_waveform(file: io.BytesIO | str | Path) -> "np.ndarray":
     """Ambil waveform mono 16 kHz PENUH (tanpa potong) untuk transkrip STT."""
     waveform, sample_rate = load_audio(file)
@@ -208,6 +228,32 @@ def transcribe_audio(asr_pipeline: Any, waveform: "np.ndarray", language: str = 
         chunk_length_s=30,
     )
     return str(output.get("text", "")).strip()
+
+
+def transcribe_audio_segments(
+    asr_pipeline: Any, waveform: "np.ndarray", language: str = "indonesian"
+) -> tuple[str, list[dict[str, Any]]]:
+    """Transkrip audio + timestamp per-segmen (untuk analisis emosi per-segmen)."""
+    output = asr_pipeline(
+        {"raw": waveform, "sampling_rate": TARGET_SAMPLE_RATE},
+        generate_kwargs={"language": language, "task": "transcribe"},
+        chunk_length_s=30,
+        return_timestamps=True,
+    )
+    text = str(output.get("text", "")).strip()
+    segments = [
+        {"text": str(chunk["text"]).strip(), "start": float(chunk["timestamp"][0]), "end": float(chunk["timestamp"][1])}
+        for chunk in output.get("chunks", [])
+        if chunk.get("timestamp") and chunk["timestamp"][0] is not None and chunk["timestamp"][1] is not None
+    ]
+    return text, segments
+
+
+def slice_waveform(waveform: "np.ndarray", start: float, end: float) -> "np.ndarray":
+    """Potong waveform mono 16kHz berdasarkan rentang waktu (detik)."""
+    start_sample = max(0, int(start * TARGET_SAMPLE_RATE))
+    end_sample = min(len(waveform), int(end * TARGET_SAMPLE_RATE))
+    return waveform[start_sample:end_sample]
 
 
 STT_FALLBACK_MESSAGE = "Transkripsi sementara tidak tersedia. Silakan coba lagi nanti."
@@ -270,6 +316,29 @@ def safe_transcribe(
         return STT_FALLBACK_MESSAGE, False
 
 
+def safe_transcribe_segments(
+    file: io.BytesIO | str | Path,
+    model_name: str,
+    device_name: str,
+    language: str = "indonesian",
+    *,
+    pipeline_loader: Any | None = None,
+) -> tuple[str, list[dict[str, Any]], bool]:
+    """Transkrip + segmen waktu. Tidak pernah raise; mengembalikan (teks, segmen, sukses)."""
+    try:
+        if hasattr(file, "seek"):
+            file.seek(0)
+        waveform = get_transcription_waveform(file)
+        asr = get_whisper_pipeline(model_name, device_name, loader=pipeline_loader)
+        text, segments = transcribe_audio_segments(asr, waveform, language)
+        cleaned = text.strip()
+        if not cleaned:
+            return "Tidak ada ucapan yang terdeteksi.", [], True
+        return cleaned, segments, True
+    except Exception:
+        return STT_FALLBACK_MESSAGE, [], False
+
+
 def predict_emotion(
     model: WavLMSERModel,
     processor: Any,
@@ -323,4 +392,35 @@ def predict_emotion(
         "probabilities": probabilities,
         "logits": logits.squeeze(0).cpu().numpy(),
         "probabilities_df": prob_df,
+    }
+
+
+def summarize_prediction(result: dict) -> dict:
+    """Ringkas prediksi untuk tampilan ranking & margin."""
+    prob_df = result["probabilities_df"]
+    top_pct = float(prob_df.iloc[0]["Persentase (%)"])
+
+    second_label = None
+    second_pct = 0.0
+    if len(prob_df) > 1:
+        second_label = str(prob_df.iloc[1]["Emosi"])
+        second_pct = float(prob_df.iloc[1]["Persentase (%)"])
+
+    margin_pp = top_pct - second_pct
+
+    if margin_pp >= 20:
+        separation = "Pemisahan kuat dari emosi lain"
+    elif margin_pp >= 10:
+        separation = "Pemisahan cukup jelas dari emosi lain"
+    else:
+        separation = "Pemisahan tipis — emosi lain masih dekat"
+
+    return {
+        "top_label": result["predicted_label"],
+        "top_pct": top_pct,
+        "second_label": second_label,
+        "second_pct": second_pct,
+        "margin_pp": margin_pp,
+        "separation": separation,
+        "num_classes": len(prob_df),
     }
