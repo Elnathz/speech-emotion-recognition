@@ -1,18 +1,16 @@
-"""Halaman Dashboard — ringkasan dataset training & performa model."""
+"""Halaman Dashboard — status sistem dan aktivitas analisis pada sesi berjalan."""
 
 from __future__ import annotations
 
-import altair as alt
+from collections import Counter
+
+import pandas as pd
 import streamlit as st
 import torch
 
-from config import EMOTION_COLORS, MODEL_DISPLAY_PATH, SER_BACKBONE
-from services import MODELS_DIR, load_dataset_metadata, load_model_metrics, load_ser_model
+from config import EMOTION_ICONS, IS_CLOUD, MAX_CLOUD_PREDICTIONS
+from services import check_model_ready
 from components.ui import render_section_header
-
-
-def _id_number(n: int) -> str:
-    return f"{n:,}".replace(",", ".")
 
 
 def main() -> None:
@@ -20,87 +18,64 @@ def main() -> None:
         """
         <div class="hero-card">
             <div class="hero-title">Dashboard</div>
-            <p class="hero-subtitle">Ringkasan dataset training dan performa model WavLM SER.</p>
+            <p class="hero-subtitle">Status sistem dan aktivitas analisis pada sesi ini.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    df = load_dataset_metadata()
-    metrics = load_model_metrics() or {}
-
-    if df is None:
-        st.warning("File metadata dataset (models/metadata_split_v7.csv) tidak ditemukan.")
-        return
-
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    try:
-        model, _ = load_ser_model(device_name)
-        param_label = f"{sum(p.numel() for p in model.parameters()) / 1e6:.1f} Jt"
-    except Exception:
-        param_label = "—"
+    model_ready, model_error = check_model_ready(device_name)
+    device_label = "GPU (CUDA)" if device_name == "cuda" else "CPU"
 
-    test_acc = metrics.get("test_acc")
-    val_acc = metrics.get("best_val_acc")
+    render_section_header("Status Sistem", "Kesiapan Layanan Saat Ini")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Dataset", _id_number(len(df)))
-    c2.metric("Parameter Model", param_label)
-    c3.metric("Akurasi Test", f"{test_acc * 100:.1f}%" if test_acc is not None else "—")
-    c4.metric("Akurasi Validasi Terbaik", f"{val_acc * 100:.1f}%" if val_acc is not None else "—")
+    cols = st.columns(3 if IS_CLOUD else 2)
+    cols[0].metric("Status Model", "Siap" if model_ready else "Gagal")
+    cols[1].metric("Perangkat", device_label)
+    if IS_CLOUD:
+        used = st.session_state.get("cloud_prediction_count", 0)
+        cols[2].metric("Kuota Cloud Sesi Ini", f"{used}/{MAX_CLOUD_PREDICTIONS}")
 
-    render_section_header("Dataset", "Distribusi Sampel")
+    if not model_ready and model_error:
+        st.error(model_error)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.caption("Per Kelas Emosi")
-        emo_df = df["emosi"].value_counts().rename_axis("Emosi").reset_index(name="Jumlah")
-        chart = (
-            alt.Chart(emo_df)
-            .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
-            .encode(
-                x=alt.X("Emosi:N", sort="-y", title=None),
-                y=alt.Y("Jumlah:Q", title="Jumlah Sampel"),
-                color=alt.Color(
-                    "Emosi:N",
-                    scale=alt.Scale(domain=list(EMOTION_COLORS.keys()), range=list(EMOTION_COLORS.values())),
-                    legend=None,
-                ),
-                tooltip=["Emosi", "Jumlah"],
-            )
-            .properties(height=300)
+    render_section_header("Aktivitas Sesi Ini", "Riwayat Analisis pada Sesi Berjalan")
+
+    history = st.session_state.get("prediction_history", [])
+    if not history:
+        st.info("Belum ada analisis yang dijalankan pada sesi ini.")
+        st.page_link("pages/analisis.py", label="Mulai analisis pertama →", icon=":material/mic:")
+    else:
+        total_count = st.session_state.get("session_analysis_count", len(history))
+        top_emotion, _ = Counter(entry["label"] for entry in history).most_common(1)[0]
+
+        stat1, stat2 = st.columns(2)
+        stat1.metric("Total Analisis Sesi Ini", total_count)
+        stat2.metric(
+            "Emosi Terbanyak",
+            f"{EMOTION_ICONS.get(top_emotion, '')} {top_emotion.capitalize()}",
         )
-        st.altair_chart(chart, use_container_width=True)
 
-    with col2:
-        st.caption("Per Split (Train / Val / Test)")
-        split_df = df["split"].value_counts().reindex(["train", "val", "test"]).rename("Jumlah")
-        st.bar_chart(split_df, height=300)
-
-    st.caption("Per Sumber Dataset")
-    sumber_df = df["sumber"].value_counts().rename("Jumlah")
-    st.bar_chart(sumber_df, height=280)
-
-    render_section_header("Model", "Kurva Training & Confusion Matrix")
-
-    curve_path = MODELS_DIR / "kurva_training_v7.png"
-    cm_path = MODELS_DIR / "confusion_matrix_v7.png"
-    if curve_path.exists():
-        st.image(str(curve_path), caption="Kurva Training vs Validasi", use_container_width=True)
-    if cm_path.exists():
-        st.image(str(cm_path), caption="Confusion Matrix (Test Set)", use_container_width=True)
-
-    with st.expander("Detail Konfigurasi Model"):
-        st.caption(f"Backbone: {SER_BACKBONE}")
-        st.caption(f"Epoch terbaik: {metrics.get('best_epoch', '—')}")
-        st.code(MODEL_DISPLAY_PATH, language=None)
+        activity_df = pd.DataFrame(
+            [
+                {
+                    "Waktu": entry["time"],
+                    "File": entry["filename"],
+                    "Emosi": f"{EMOTION_ICONS.get(entry['label'], '')} {entry['label'].capitalize()}",
+                    "Confidence": f"{entry['confidence'] * 100:.1f}%",
+                }
+                for entry in history
+            ]
+        )
+        st.dataframe(activity_df, use_container_width=True, hide_index=True)
 
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     link1, link2 = st.columns(2)
     with link1:
-        st.page_link("pages/model.py", label="Lihat detail Model →", icon="🧠")
+        st.page_link("pages/model.py", label="Lihat detail Model →", icon=":material/psychology:")
     with link2:
-        st.page_link("pages/dataset.py", label="Lihat detail Dataset →", icon="📚")
+        st.page_link("pages/dataset.py", label="Lihat detail Dataset →", icon=":material/dataset:")
 
 
 main()

@@ -14,14 +14,12 @@ st.set_page_config(
 )
 inject_custom_css()
 
-pages = {
-    "Beranda": [st.Page("pages/home.py", title="Home", icon="🏠", default=True)],
-    "Analisis": [st.Page("pages/analisis.py", title="Analisis Emosi", icon="🎙️")],
-    "Insight": [
-        st.Page("pages/dashboard.py", title="Dashboard", icon="📊"),
-        st.Page("pages/model.py", title="Model", icon="🧠"),
-        st.Page("pages/dataset.py", title="Dataset", icon="📚"),
-    ],
-}
+pages = [
+    st.Page("pages/home.py", title="Home", icon=":material/home:", default=True),
+    st.Page("pages/analisis.py", title="Analisis Emosi", icon=":material/mic:"),
+    st.Page("pages/dashboard.py", title="Dashboard", icon=":material/dashboard:"),
+    st.Page("pages/model.py", title="Model", icon=":material/psychology:"),
+    st.Page("pages/dataset.py", title="Dataset", icon=":material/dataset:"),
+]
 pg = st.navigation(pages, position="top")
 pg.run()
