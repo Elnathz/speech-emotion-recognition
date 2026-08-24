@@ -9,7 +9,15 @@ import torch
 from sklearn.metrics import classification_report
 
 from config import MODEL_DISPLAY_PATH, SER_BACKBONE
-from services import load_model_metrics, load_ser_model, load_test_evaluation, load_training_history
+from services import (
+    MODELS_DIR,
+    TEST_EVALUATION_PATH,
+    TRAINING_HISTORY_PATH,
+    load_model_metrics,
+    load_ser_model,
+    load_test_evaluation,
+    load_training_history,
+)
 from utils import ID2LABEL
 from components.ui import render_section_header
 
@@ -139,7 +147,7 @@ def main() -> None:
         """
         <div class="hero-card">
             <div class="hero-title">Model</div>
-            <p class="hero-subtitle">Arsitektur, performa training, dan evaluasi model WavLM SER v7.</p>
+            <p class="hero-subtitle">Arsitektur, performa training, dan evaluasi model WavLM SER v4.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -168,13 +176,31 @@ def main() -> None:
     if history:
         _render_training_curves(history)
     else:
-        st.info("File history_v7.json tidak ditemukan — kurva training tidak dapat ditampilkan.")
+        training_curve_path = MODELS_DIR / "kurva_training_v4.png"
+        if training_curve_path.exists():
+            st.image(
+                str(training_curve_path),
+                caption="Kurva training model v4",
+                use_container_width=True,
+            )
+            st.caption(
+                f"{TRAINING_HISTORY_PATH.name} belum tersedia. "
+                "Grafik ditampilkan dari artefak kurva training v4."
+            )
+        else:
+            st.info(
+                f"File {TRAINING_HISTORY_PATH.name} dan artefak kurva training v4 "
+                "tidak ditemukan."
+            )
 
     eval_df = load_test_evaluation()
     if eval_df is not None:
         _render_confusion_matrix(eval_df)
     else:
-        st.info("File evaluasi_test_v7.csv tidak ditemukan — confusion matrix tidak dapat ditampilkan.")
+        st.info(
+            f"File {TEST_EVALUATION_PATH.name} tidak ditemukan. "
+            "Confusion matrix tidak dapat ditampilkan."
+        )
 
     with st.expander("Konfigurasi Training"):
         st.caption(f"Backbone: {SER_BACKBONE}")
