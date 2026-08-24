@@ -19,11 +19,11 @@
 
 ### File Terdampak
 
-- [model.py](model.py)
-- [utils.py](utils.py)
-- [services.py](services.py)
-- [config.py](config.py)
-- [requirements.txt](requirements.txt)
+- [model.py](../model.py)
+- [utils.py](../utils.py)
+- [services.py](../services.py)
+- [config.py](../config.py)
+- [requirements.txt](../requirements.txt)
 - [walkthrough.md](walkthrough.md)
 
 ### Rincian Perubahan
@@ -46,7 +46,7 @@
 
 ### File Terdampak
 
-- [pipeline/ver5-ser-pipeline.ipynb](pipeline/ver5-ser-pipeline.ipynb)
+- `pipeline/ver5-ser-pipeline.ipynb`
 - [tdd_changes_tracker.md](tdd_changes_tracker.md)
 
 ### Rincian Perubahan Skenario dan Logic
@@ -69,8 +69,8 @@
 
 ### File Terdampak
 
-- [pipeline/ser-pipeline.ipynb](pipeline/ser-pipeline.ipynb)
-- [pipeline/ser_wavlm_v3_best.pt](pipeline/ser_wavlm_v3_best.pt)
+- `pipeline/ser-pipeline.ipynb`
+- `pipeline/ser_wavlm_v3_best.pt`
 - [tdd_changes_tracker.md](tdd_changes_tracker.md)
 
 ### Rincian Perubahan Skenario dan Logic

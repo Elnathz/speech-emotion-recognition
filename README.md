@@ -150,8 +150,9 @@ ser-streamlit-app/
 ├── utils.py
 ├── requirements.txt
 ├── AGENTS.md
-├── tdd_changes_tracker.md
-├── walkthrough.md
+├── docs/
+│   ├── tdd_changes_tracker.md
+│   └── walkthrough.md
 ├── pages/
 │   ├── analisis.py
 │   ├── dashboard.py
