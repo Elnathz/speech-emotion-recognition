@@ -17,7 +17,11 @@ try {
     timeout: 120000,
   });
 
-  const wakeButton = page.getByRole("button", {
+  const streamlitFrameElement = page.locator('iframe[title="streamlitApp"]');
+  await streamlitFrameElement.waitFor({ state: "visible", timeout: 120000 });
+
+  const streamlitFrame = page.frameLocator('iframe[title="streamlitApp"]');
+  const wakeButton = streamlitFrame.getByRole("button", {
     name: /yes, get this app back up|wake/i,
   });
 
@@ -26,7 +30,7 @@ try {
     await wakeButton.first().click();
   }
 
-  await page
+  await streamlitFrame
     .locator('[data-testid="stAppViewContainer"]')
     .waitFor({ state: "visible", timeout: 90000 });
 
